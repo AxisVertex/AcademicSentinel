@@ -1,0 +1,480 @@
+WHOLE SYSTEM FEATURES OVERVIEW v4
+(UPDATED WITH DETECTION SETTINGS, PROFILE MANAGEMENT, AND SCORING METRICS)
+
+STUDENT SIDE
+Secure Assessment Client (SAC)
+(Standalone Monitoring Application – Runs alongside LMS)
+
+Authentication, Profile & Room Enrollment
+• Student registration and login.
+• Account & Profile Management: Students can update their full name, email address, and password (system enforces a minimum length of 6 characters and requires current password validation).
+• Custom Avatars: Students can upload custom profile pictures (.png, .jpg, .jpeg) with a strict 5MB file size limit.
+• Displays available and assigned monitoring rooms as clickable room orbs.
+• Clicking an orb displays room details (subject name, schedule, status).
+• Students may be enrolled in rooms through:
+
+Manual instructor assignment.
+
+Valid 6-character alphanumeric room enrollment code.
+• Students must explicitly click and join selected rooms.
+• Join timestamp recording.
+• Room status visibility: Pending / Countdown / Active / Ended.
+• Real-time room notifications (starting soon, started, ended).
+Notes: • Public room browsing is not allowed.
+• Room enrollment is controlled via assignment or valid code.
+
+Controlled Room Activation
+• Instructor initiates room start.
+• System triggers countdown phase (e.g., 10 seconds).
+• Monitoring modules remain paused during countdown.
+• After countdown:
+
+------------------------------------------------------------------------------------------- -- added feature softlock by darryll
+
+Secure Session Control Window (Soft Lock Interface)
+
+A persistent auxiliary control window automatically launched by the Secure Assessment Client (SAC) during an active monitoring session.
+
+Purpose
+
+Maintains session awareness.
+Prevents premature session exit.
+Provides controlled completion workflow between student and instructor.
+
+Behavior
+• Automatically appears when monitoring session becomes Active.
+• Remains always visible on screen throughout the session.
+• Cannot be manually closed, minimized, or terminated by the student.
+• Operates independently from the main SAC interface.
+
+Interface Elements
+• Displays Secure Assessment Client session header.
+• Provides two system-controlled buttons:
+
+Done Button
+
+Student presses when exam/activity is finished.
+Sends Session Completion Request to server.
+Notifies instructor that student has completed assessment.
+Does not immediately allow exit.
+
+Leave Button
+
+Initially locked/disabled.
+Becomes enabled only after instructor approval or room unlock signal.
+Allows student to safely exit monitoring session.
+
+Soft Lock Mechanism
+• Prevents students from leaving the session without authorization.
+• Ensures monitoring remains active until instructor releases the session.
+• Eliminates need for Alt+Tab navigation back to SAC.
+• Guarantees visible session state awareness.
+
+Instructor Interaction
+• Instructor receives completion signal through IMC.
+• Instructor unlocks student exit after verification.
+• Server broadcasts unlock event to SAC client.
+
+System Actions
+• SAC listens for server-issued LeaveUnlock signal.
+• Upon unlock:
+
+Leave button activates.
+Student may exit normally.
+Monitoring session terminates safely.
+
+Restrictions
+• Window cannot be closed using:
+
+Alt+F4
+Taskbar close
+Standard window controls
+• Closing attempts are ignored or logged as behavior events (optional).
+
+------------------------------------------------------------------------------------------- -- added feature softlock by darryll
+
+Monitoring automatically activates.
+
+Visual indicator displays “SESSION STARTED”.
+
+Monitoring status indicator remains visible throughout room.
+
+Environment Integrity Detection
+Virtualization Artifact Check (VAC)
+• Detects virtual machines (e.g., VMware, VirtualBox).
+• Detects Android emulators (e.g., BlueStacks).
+Hardware–Software Artifact Scan (HAS)
+• System configuration inspection.
+• Detection of abnormal or suspicious setups.
+
+Behavioral Detection Modules
+Real-Time Focus Monitoring (RTFM)
+• Alt+Tab detection.
+• Window switching detection.
+• Loss of foreground focus detection.
+Process Blacklisting Detection (PBD)
+• Detection of unauthorized applications.
+• Continuous background process scanning.
+Clipboard & Screenshot Activity Detection (CSAD)
+• Copy activity detection.
+• Paste activity detection.
+• PrintScreen usage detection.
+Idle Detection (IDLE)
+• Mouse inactivity monitoring.
+• Keyboard inactivity monitoring.
+
+Decision & Local Reporting
+Behavioral Rule-Based Decision Engine (BRBDE)
+• Event evaluation.
+• Severity scoring based on rigid mathematical thresholds:
+
+S1 (Minor Violation): 10 points
+
+S2 (Moderate Violation): 20 points
+
+S3 (Severe Violation): 50 points
+• Rule-based risk classification using aggregated severity scores:
+
+Safe: Total Score < 20
+
+Suspicious: Total Score 20 - 49
+
+Cheating: Total Score ≥ 50
+
+Additional Functions:
+• Local event logging.
+• End-of-room behavior summary.
+• Secure real-time transmission of monitoring events to server.
+• Automatic reconnection handling.
+• Connection status reporting.
+
+SERVER SIDE
+Proctoring Room Server (PSS)
+
+Authentication, Profiles & Access Control
+• User authentication (Student / Instructor).
+• Role-Based Access Control (RBAC).
+• JWT token management (Tokens configured for 8-hour expiration).
+• Secure File Storage: Processing and validation of MIME types for user avatars and course logos.
+• Encrypted HTTPS communication.
+
+Subject-Based Room Management
+• Creation of reusable subject-based monitoring rooms.
+• Room Customization: Instructors can upload specific image files to serve as room/course logos on the dashboards.
+• Rooms displayed as orb-based entities in dashboards.
+• Instructor may assign students through:
+
+Manual selection of student accounts.
+
+Generation of a random 6-character alphanumeric room enrollment code (e.g., "A1B2C3").
+• Students may enroll using valid room code.
+• System validates and specifically records the enrollment source string ("Manual" or "Code") into the database.
+• Maintains expected student list per room.
+• Tracks:
+
+Assigned students
+
+Joined students
+
+Non-joined students
+
+Join timestamps
+
+Connection status (Connected / Disconnected)
+• Room status management: Pending / Countdown / Active / Ended.
+• Room history retention.
+
+Real-Time Communication
+• Receives live monitoring events from SAC.
+• Sends room state updates to SAC.
+• Relays real-time violation alerts to IMC.
+• Synchronizes room state across SAC and IMC.
+• Tracks client connection status.
+• Handles automatic reconnection logic.
+
+Data Storage & Audit
+• Storage of monitoring events, violation logs, behavior scores, and risk classifications.
+• Timestamped activity records.
+• Room metadata and associated imagery.
+• Student participation logs.
+• Enrollment source tracking ("Manual" vs "Code").
+• Historical room tracking.
+
+TEACHER SIDE
+Instructor Monitoring Console (IMC)
+
+Room, Profile & Student Management
+• Instructor registration and login.
+• Account Management: Instructors can update their profile details, change passwords, and upload custom circular avatar images.
+• Creation of subject-based monitoring rooms.
+• Rooms displayed as clickable room orbs (displaying uploaded course logos).
+• Clicking an orb displays room details: Assigned students, Join statistics, Room status.
+• Manual assignment of student accounts.
+• Generation of 6-character alphanumeric enrollment code.
+• Reusable room structure.
+• Start / Stop room control.
+
+Live Monitoring Dashboard
+Displays:
+• Assigned students, Joined students, and Students who did not join.
+• Student connection status: Connected / Disconnected.
+• Student activity status: Active / Idle.
+• Real-time violation alerts and Severity indicators.
+• Current room status.
+
+Controlled Room Start
+• Instructor presses “Start”.
+• Countdown is triggered for all joined SAC clients.
+• Monitoring activates after countdown.
+• Live room status updates across system.
+
+Post-Room Review & Reporting
+• Per-student behavior summary.
+• Risk classification results (Safe / Suspicious / Cheating).
+• Timeline of detected activities.
+• Participation record (Joined / Not Joined / Disconnected).
+• Exportable monitoring reports.
+• Historical room reuse and review.
+
+UPDATED SYSTEM FLOW
+Instructor creates room.
+
+Instructor assigns students manually or generates room code.
+
+Room orb appears on student dashboard (if assigned or enrolled via code).
+
+Student logs in and explicitly joins room.
+
+Instructor presses Start.
+
+Countdown phase begins.
+
+Monitoring activates on joined SAC clients.
+
+SAC detects and scores behavior.
+
+SAC sends events to PSS in real time.
+
+PSS stores data and relays alerts to IMC.
+
+IMC displays live alerts and post-room reports.
+
+SYSTEM RESPONSIBILITIES
+The Secure Assessment Client (SAC) is responsible for:
+• User Authentication & Profiles: Allow student registration, login, and profile editing. Maintain authenticated room using issued token.
+• Room Interface: Display assigned or enrolled rooms as clickable orbs. Show room details and status. Allow students to explicitly join rooms.
+• Controlled Monitoring Execution: Wait for server-triggered countdown. Activate monitoring only after room start. Display room activity indicator.
+• Environment Integrity Inspection: Detect virtualization artifacts, emulator environments, and abnormal system configurations.
+• Behavioral Monitoring: Detect focus switching, unauthorized processes, clipboard/screenshot usage, and monitor idle behavior.
+• Local Decision Processing: Evaluate detected events. Assign rigid severity scores (10, 20, 50). Classify behavior (Safe, Suspicious, Cheating).
+• Event Transmission: Send monitoring events to the server in real time. Handle automatic reconnection. Report connection status.
+
+SAC does not: Store permanent records, manage room creation, or generate reports.
+
+The Proctoring Room Server (PSS) is responsible for:
+• Authentication & Authorization: Authenticate users, enforce role-based access control, issue/validate JWT tokens, and manage profile image storage.
+• Room Lifecycle Management: Create and manage monitoring rooms and custom logos. Handle manual student assignment. Generate and validate 6-character enrollment codes. Maintain room status.
+• Enrollment & Participation Tracking: Maintain expected student list. Record student enrollment source ("Manual" or "Code"). Track joined and non-joined students. Record join timestamps and track connection status.
+• Real-Time Communication Management: Receive monitoring events from SAC. Broadcast room state updates. Relay violation alerts to IMC. Synchronize room state.
+• Data Storage & Audit: Store monitoring events, violation logs, scores, participation records, and image paths. Generate room summaries.
+
+PSS acts as the central authority and synchronization layer of the system.
+
+The Instructor Monitoring Console (IMC) is responsible for:
+• Instructor Authentication & Profiles: Allow instructor registration, login, and profile editing.
+• Room Management Interface: Create subject-based rooms with custom images. Assign students manually. Generate room enrollment codes. View rooms as orb-based components. Start and end rooms.
+• Live Monitoring Dashboard: Display assigned, joined, and non-joined students. Show connection status and activity state. Receive and display real-time violation alerts and severity indicators.
+• Post-Room Review: View per-student behavior summaries, risk classifications, detailed activity timeline. Export monitoring reports. Access historical rooms.
+
+IMC does not: Perform monitoring detection, store raw event data locally, or process behavior scoring.
+
+DATA FLOW
+Authentication & Profile Flow
+
+Student or Instructor submits login/profile update (SAC or IMC → PSS).
+
+PSS validates credentials against database. Image files are routed to ImageStorageService.
+
+If valid, PSS issues JWT token and returns user context.
+Data Movement: Client -> PSS -> Database -> PSS -> Client
+
+Room Creation and Assignment Flow
+
+Instructor creates a room and optionally uploads a logo (IMC → PSS).
+
+PSS stores room record and image path in database.
+
+Instructor assigns students manually OR generates room code.
+
+PSS stores assigned student records ("Manual" source) or room code.
+Data Movement: IMC -> PSS -> Database
+If room code is used:
+
+Student enters room code (SAC → PSS).
+
+PSS validates code.
+
+If valid, enrollment record is created tagged with "Code" source.
+Data Movement: SAC -> PSS -> Database
+
+Room Discovery & Join Flow
+
+Student logs into SAC.
+
+SAC requests list of available/assigned rooms (SAC -> PSS).
+
+PSS retrieves rooms from database.
+
+Rooms appear as orb components in SAC dashboard.
+
+When student joins, SAC sends join request to PSS.
+
+PSS records join timestamp and participation record, then notifies IMC in real time.
+Data Movement: SAC → PSS → Database → PSS → IMC (real-time update)
+
+Controlled Room Start Flow
+
+Instructor presses Start (IMC → PSS).
+
+PSS updates room status to Countdown and broadcasts to SAC.
+
+Countdown completes. PSS updates status to Active and broadcasts SessionStarted.
+
+SAC activates monitoring modules.
+Data Movement: IMC → PSS → Database → PSS → SAC (real-time broadcast)
+
+Monitoring & Violation Flow
+
+SAC detects behavioral or environment event.
+
+SAC evaluates severity locally.
+
+SAC sends monitoring event to PSS in real time.
+
+PSS stores event in database and processes event for violation classification.
+
+PSS sends live alert to IMC dashboard.
+Data Movement: SAC → PSS → Database → PSS → IMC (real-time alert)
+
+Room End & Reporting Flow
+
+Instructor presses End (IMC → PSS).
+
+PSS updates room status to Ended.
+
+PSS broadcasts SessionEnded event to SAC clients. SAC stops monitoring.
+
+PSS computes final risk summaries using BRBDE thresholds.
+
+Instructor requests report (IMC → PSS). PSS retrieves stored data.
+Data Movement: IMC → PSS → Database → PSS → SAC (room end) / PSS → IMC (report data)
+
+ENDPOINT LIST
+REST API (HTTPS)
+
+AUTHENTICATION
+POST /api/auth/register
+POST /api/auth/login
+
+PROFILE & IMAGE MANAGEMENT
+POST /api/images/profile (Upload user avatar)
+GET /api/images/profile (Fetch user profile data and avatar URL)
+GET /api/images/room/{roomId}/details (Fetch room details including custom course logo)
+
+SESSIONS - INSTRUCTOR SIDE
+Create Room: POST /api/rooms
+Assign Students Manually: POST /api/rooms/{sessionId}/assign
+Generate Enrollment Code: POST /api/rooms/{sessionId}/generate-code
+Start Room: POST /api/rooms/{sessionId}/start
+End Room: POST /api/rooms/{sessionId}/end
+Get Instructor Rooms: GET /api/rooms/instructor
+
+SESSIONS - STUDENT SIDE
+Get Available / Assigned Rooms: GET /api/rooms/my
+Join Room: POST /api/rooms/{sessionId}/join
+Enroll Using Room Code: POST /api/rooms/enroll
+Get Room Details: GET /api/rooms/{sessionId}
+
+PARTICIPATION AND STATUS
+Get Room Participants (Instructor view): GET /api/rooms/{sessionId}/participants
+Get Room Status: GET /api/rooms/{sessionId}/status
+
+REPORTS
+Get Full Room Report: GET /api/reports/room/{sessionId}
+Get Individual Student Report: GET /api/reports/student/{sessionId}/{studentId}
+
+DETECTION CONFIGURATION
+GET /api/rooms/{roomId}/settings
+PUT /api/rooms/{roomId}/settings
+
+SIGNALR HUB (REAL-TIME COMMUNICATION)
+Hub Route: /hubs/monitoringHub
+
+SAC TO SERVER (Hub Methods)
+SendMonitoringEvent
+
+SERVER TO SAC (Hub Methods)
+SessionCountdownStarted
+SessionStarted
+SessionEnded
+
+SERVER TO IMC (Hub Methods)
+StudentJoined
+StudentDisconnected
+ReceiveViolationAlert
+SessionStatusChanged
+
+DATABASE TABLES
+Users
+Purpose: Stores both students and instructors.
+Fields: Id (PK), Email (Unique), PasswordHash, Role (Student / Instructor), CreatedAt, ProfileImageUrl, ProfileImagePath, ProfileImageContentType, ProfileImageSize, ProfileImageUploadedAt.
+
+Rooms
+Purpose: Represents one monitoring room.
+Fields: Id (PK), SubjectName, InstructorId (FK → Users.Id), Status, EnrollmentCode (nullable, unique 6-character alphanumeric), CodeExpiry, CreatedAt, RoomImageUrl, RoomImagePath, RoomImageContentType, RoomImageSize, RoomImageUploadedAt.
+
+RoomDetectionSettings
+Purpose: Stores instructor-configured detection preferences per room.
+Fields: Id (PK), RoomId (FK → Rooms.Id), EnableClipboardMonitoring, EnableProcessDetection, EnableIdleDetection, IdleThresholdSeconds, EnableFocusDetection, EnableVirtualizationCheck, StrictMode, CreatedAt.
+
+SessionAssignments
+Purpose: Tracks manually assigned students. Defines who the instructor expects to see in the room.
+Fields: Id (PK), RoomId (FK → Rooms.Id), StudentId (FK → Users.Id), AssignedAt.
+
+RoomEnrollments
+Purpose: Tracks students officially enrolled using code or manual assignment.
+Fields: Id (PK), RoomId (FK → Rooms.Id), StudentId (FK → Users.Id), EnrollmentSource ("Manual" or "Code"), EnrolledAt.
+
+SessionParticipants
+Purpose: Tracks actual participation (who joined the live exam hub).
+Fields: Id (PK), RoomId (FK → Rooms.Id), StudentId (FK → Users.Id), JoinedAt, DisconnectedAt, ConnectionStatus, FinalRiskLevel.
+
+MonitoringEvents
+Purpose: Stores all detected monitoring events.
+Fields: Id (PK), RoomId (FK → Rooms.Id), StudentId (FK → Users.Id), EventType, SeverityScore, Timestamp.
+
+ViolationLogs
+Purpose: Specifically tracks events classified as violations for the IMC live feed.
+Fields: Id (PK), RoomId (FK → Rooms.Id), StudentEmail, Module, Description, SeverityLevel, Timestamp.
+
+RiskSummaries
+Purpose: Precomputed room results per student generated when the room ends.
+Fields: Id (PK), RoomId (FK → Rooms.Id), StudentId (FK → Users.Id), TotalViolations, TotalSeverityScore, RiskLevel, ComputedAt.
+
+DETECTION CONFIGURATION FEATURE
+Instructor Monitoring Console (IMC) – Detection Settings
+• Instructors may configure monitoring behavior per room before the room starts.
+• Settings are editable only when room status is Pending.
+• Settings become locked once room becomes Active.
+• Configurable options include: Enable/Disable modules (Clipboard, Process Blacklist, Focus, Virtualization, Idle) and Configure Idle Threshold (seconds).
+
+Secure Assessment Client (SAC) – Behavior Adaptation
+• Upon joining a room, SAC requests the room’s detection settings from the server.
+• SAC activates only the enabled monitoring modules.
+• Disabled modules remain inactive for the duration of the room.
+
+Proctoring Room Server (PSS) – Detection Control Management
+• Stores detection configuration per room in the RoomDetectionSettings table.
+• Validates that only instructors can modify detection settings.
+• Prevents modification once room status is Active.
+• Provides detection settings to SAC upon request.

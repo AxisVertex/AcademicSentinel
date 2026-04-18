@@ -1,0 +1,300 @@
+WHOLE SYSTEM FEATURES OVERVIEW v5
+(UPDATED WITH REUSABLE ROOMS, EXAM SESSIONS, AND ENHANCED NAVIGATION)
+
+====================================================================
+STUDENT SIDE
+Secure Assessment Client (SAC)
+(Standalone Monitoring Application – Runs alongside LMS)
+
+AUTHENTICATION, PROFILE & ROOM ENROLLMENT
+
+• Student registration and login
+• Account & Profile Management
+
+Update full name, email address, and password
+Minimum password length: 6 characters
+Requires current password validation
+
+• Custom Avatars
+
+Upload (.png, .jpg, .jpeg)
+Maximum file size: 5MB
+
+• Displays available and assigned monitoring rooms as clickable room orbs
+• Clicking an orb displays room details (subject name, schedule, status)
+
+• Students may be enrolled in rooms through:
+
+Manual instructor assignment
+Valid 6-character alphanumeric room enrollment code
+
+• Students must explicitly click and join selected rooms
+• Join timestamp recording
+• Room status visibility: Pending / Countdown / Active / Ended
+• Real-time room notifications (starting soon, started, ended)
+
+Notes:
+• Public room browsing is not allowed
+• Room enrollment is controlled via assignment or valid code
+• Rooms act as permanent subject-based containers allowing multiple reusable monitoring sessions
+
+CONTROLLED ROOM ACTIVATION
+
+• Instructor initiates room start
+• System triggers countdown phase (e.g., 10 seconds)
+• Monitoring modules remain paused during countdown
+
+After countdown:
+• Monitoring automatically activates
+• Visual indicator displays "SESSION STARTED"
+• Monitoring status indicator remains visible throughout room
+
+SECURE SESSION CONTROL WINDOW (SOFT LOCK INTERFACE)
+
+A persistent auxiliary control window automatically launched by SAC during an active monitoring session.
+
+Purpose:
+• Maintains session awareness
+• Prevents premature session exit
+• Provides controlled completion workflow
+
+Behavior:
+• Automatically appears when session becomes Active
+• Always visible on screen
+• Cannot be manually closed, minimized, or terminated
+• Operates independently from main SAC interface
+
+Interface Elements:
+
+Done Button
+• Student presses when finished
+• Sends Session Completion Request to server
+• Notifies instructor
+• Does NOT allow immediate exit
+
+Leave Button
+• Initially disabled
+• Enabled only after instructor approval or room unlock
+• Allows safe exit
+
+Soft Lock Mechanism:
+• Prevents unauthorized exit
+• Ensures monitoring remains active until instructor release
+• Eliminates need for Alt+Tab back to SAC
+• Guarantees visible session state awareness
+
+Instructor Interaction:
+• Instructor receives completion signal via IMC
+• Instructor unlocks student exit
+• Server broadcasts unlock event to SAC
+
+System Actions:
+• SAC listens for LeaveUnlock signal
+• Leave button activates
+• Monitoring session terminates safely
+
+Restrictions:
+• Window cannot be closed via Alt+F4, taskbar close, or standard controls
+• Closing attempts may be logged as behavior events (optional)
+
+ENVIRONMENT INTEGRITY DETECTION
+
+Virtualization Artifact Check (VAC)
+• Detects VMware, VirtualBox
+• Detects Android emulators (BlueStacks)
+
+Hardware–Software Artifact Scan (HAS)
+• System configuration inspection
+• Detection of abnormal or suspicious setups
+
+BEHAVIORAL DETECTION MODULES
+
+Real-Time Focus Monitoring (RTFM)
+• Alt+Tab detection
+• Window switching detection
+• Foreground focus loss detection
+
+Process Blacklisting Detection (PBD)
+• Detects unauthorized applications
+• Continuous background scanning
+
+Clipboard & Screenshot Activity Detection (CSAD)
+• Copy detection
+• Paste detection
+• PrintScreen detection
+
+Idle Detection (IDLE)
+• Mouse inactivity monitoring
+• Keyboard inactivity monitoring
+
+DECISION & LOCAL REPORTING
+
+Behavioral Rule-Based Decision Engine (BRBDE)
+
+Severity Scoring:
+S1 (Minor): 10 points
+S2 (Moderate): 20 points
+S3 (Severe): 50 points
+
+Risk Classification:
+Safe: Total < 20
+Suspicious: 20 – 49
+Cheating: ≥ 50
+
+Additional Functions:
+• Local event logging
+• End-of-room behavior summary
+• Secure real-time event transmission
+• Automatic reconnection handling
+• Connection status reporting
+
+====================================================================
+SERVER SIDE
+Proctoring Room Server (PSS)
+
+AUTHENTICATION, PROFILES & ACCESS CONTROL
+
+• User authentication (Student / Instructor)
+• Role-Based Access Control (RBAC)
+• JWT tokens (8-hour expiration)
+• Secure file storage for avatars and logos
+• Encrypted HTTPS communication
+
+REUSABLE SUBJECT-BASED ROOM MANAGEMENT
+
+• Create reusable subject-based rooms
+• One room = permanent subject container
+• ExamSessions table tracks multiple exams per room
+
+• Room customization with course logos
+• Rooms displayed as orb-based entities
+
+Instructor may:
+• Manually assign students
+• Generate 6-character enrollment code
+
+System:
+• Records enrollment source ("Manual" or "Code")
+• Maintains expected student list
+• Tracks assigned, joined, non-joined students
+• Tracks join timestamps
+• Tracks connection status
+• Manages room status (Pending / Countdown / Active / Ended)
+• Retains historical session records
+
+REAL-TIME COMMUNICATION
+
+• Receives live monitoring events from SAC
+• Sends room state updates
+• Relays violation alerts to IMC
+• Synchronizes system state
+• Tracks client connections
+• Handles reconnection logic
+
+DATA STORAGE & AUDIT
+
+• Stores monitoring events
+• Stores violation logs
+• Stores behavior scores and classifications
+• Stores participation logs
+• Stores enrollment sources
+• Stores exam session data
+• Stores room metadata and imagery
+
+====================================================================
+TEACHER SIDE
+Instructor Monitoring Console (IMC)
+
+ROOM, PROFILE & STUDENT MANAGEMENT
+
+• Instructor registration and login
+• Profile editing and avatar upload
+• Dynamic sidebar identity display
+
+• Create subject-based rooms
+• Upload room logos
+• Orb-based room dashboard
+• Dynamic window navigation
+
+• Manual student assignment
+• Generate enrollment codes
+• Start and end exam sessions
+
+LIVE MONITORING DASHBOARD
+
+Displays:
+• Assigned / Joined / Not Joined students
+• Connection status (Connected / Disconnected)
+• Activity status (Active / Idle)
+• Real-time violation alerts
+• Visual red orb indicators
+• Current room status
+
+POST-ROOM REVIEW & REPORTING
+
+• Per-student behavior summary
+• Risk classification
+• Activity timeline
+• Participation record
+• Exportable reports
+• Historical session review
+
+====================================================================
+DATABASE TABLES
+
+Users
+Id, Email, PasswordHash, Role, CreatedAt, ProfileImage fields
+
+Rooms
+Id, SubjectName, InstructorId, Status, EnrollmentCode, CodeExpiry, CreatedAt, RoomImage fields
+
+ExamSessions
+Id, RoomId, StartTime, EndTime, Status
+
+RoomDetectionSettings
+Id, RoomId, EnableClipboardMonitoring, EnableProcessDetection, EnableIdleDetection, IdleThresholdSeconds, EnableFocusDetection, EnableVirtualizationCheck, StrictMode, CreatedAt
+
+SessionAssignments
+Id, RoomId, StudentId, AssignedAt
+
+RoomEnrollments
+Id, RoomId, StudentId, EnrollmentSource, EnrolledAt
+
+SessionParticipants
+Id, RoomId, StudentId, JoinedAt, DisconnectedAt, ConnectionStatus, FinalRiskLevel
+
+MonitoringEvents
+Id, RoomId, StudentId, EventType, SeverityScore, Timestamp
+
+ViolationLogs
+Id, RoomId, StudentEmail, Module, Description, SeverityLevel, Timestamp
+
+RiskSummaries
+Id, RoomId, StudentId, TotalViolations, TotalSeverityScore, RiskLevel, ComputedAt
+
+====================================================================
+DETECTION CONFIGURATION FEATURE
+
+IMC – Detection Settings
+• Configurable per room
+• Editable only when room is Pending
+• Locked once Active
+
+Configurable options:
+• Enable/Disable Clipboard
+• Enable/Disable Process Detection
+• Enable/Disable Focus Detection
+• Enable/Disable Virtualization Check
+• Enable/Disable Idle Detection
+• Configure Idle Threshold (seconds)
+
+SAC – Behavior Adaptation
+• Requests room detection settings upon join
+• Activates only enabled modules
+• Disabled modules remain inactive
+
+PSS – Detection Control Management
+• Stores settings in RoomDetectionSettings table
+• Only instructors may modify settings
+• Prevents modification when Active
+• Provides settings to SAC upon request

@@ -1,0 +1,192 @@
+<Window x:Class="AcademicSentinel.Client.Views.SAC.SecureAssessmentClientWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        Title="Secure Assessment Client - FourCUDA"
+        Height="720" Width="900"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5"
+        FontFamily="{materialDesign:MaterialDesignFont}"
+        TextElement.Foreground="#1B1B1B"
+        TextElement.FontSize="14">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="FEUGreenBrush" Color="#1B5E20"/>
+        <SolidColorBrush x:Key="FEUGreenLightBrush" Color="#2E7D32"/>
+        <SolidColorBrush x:Key="FEUGreenDarkBrush" Color="#0D3B12"/>
+        <SolidColorBrush x:Key="FEUGoldBrush" Color="#FFB300"/>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ======================== TOP HEADER BAR ======================== -->
+        <Border Grid.Row="0" Background="White" Padding="24,14">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.06" Color="Black"/>
+            </Border.Effect>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="ShieldCheckOutline" Width="24" Height="24"
+                                             Foreground="#1B5E20" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock x:Name="TxtHeaderSessionClock"
+                               Text=""
+                               FontSize="18" FontWeight="Bold"
+                               Foreground="#1B5E20" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button x:Name="BtnHeaderExpand" Visibility="Collapsed" Margin="0,0,8,0"
+                            Padding="10,6" FontSize="13" Cursor="Hand"
+                            Content="□" Click="BtnExpandCompact_Click"/>
+
+                    <!-- Leave Button -->
+                    <Button x:Name="BtnLeave" Padding="16,8" FontSize="13"
+                            Cursor="Hand" Click="BtnLeave_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="leaveBorder" CornerRadius="8" Padding="16,8" Cursor="Hand">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+                                            <Setter Property="BorderThickness" Value="1.5"/>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock x:Name="TxtLeaveBtn" Text="Leave" FontSize="13" Foreground="#616161"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="leaveBorder" Property="Background" Value="#FFEBEE"/>
+                                        <Setter TargetName="leaveBorder" Property="BorderBrush" Value="#FFCDD2"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ======================== MAIN CONTENT ======================== -->
+        <Grid x:Name="SessionContentGrid" Grid.Row="1" Margin="30,24,30,24">
+            <Border x:Name="FullSessionPanel" Background="White" CornerRadius="16" Padding="32">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.06" Color="Black"/>
+                </Border.Effect>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Monitoring Status Indicator -->
+                    <Border Grid.Row="0" CornerRadius="8" Padding="14,10" Margin="0,0,0,20">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#FFEBEE"/>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="MonitorDot" Width="10" Height="10" Margin="0,0,10,0">
+                                <Ellipse.Fill>
+                                    <SolidColorBrush x:Name="MonitorDotBrush" Color="#D32F2F"/>
+                                </Ellipse.Fill>
+                            </Ellipse>
+                            <TextBlock x:Name="TxtMonitoringStatus"
+                                       Text="Monitoring Active - You cannot leave during the session"
+                                       FontSize="13" FontWeight="Medium" Foreground="#C62828"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Course Room Title -->
+                    <StackPanel Grid.Row="1" Margin="0,0,0,20">
+                        <TextBlock Text="Course Room :" FontSize="13" FontWeight="Medium" Foreground="#616161" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="TxtCourseRoom"
+                                   Text="2TSYS2526 - MATH - TN310-2"
+                                   FontSize="18" FontWeight="Bold" Foreground="#1B5E20"/>
+                    </StackPanel>
+
+                    <!-- Student Information -->
+                    <StackPanel Grid.Row="2" Margin="0,0,0,24"/>
+
+                    <!-- Detection Reports -->
+                    <TextBlock Grid.Row="3" Text="Detection Reports :" FontSize="14" FontWeight="SemiBold"
+                               Foreground="#1B1B1B" Margin="0,0,0,10"/>
+
+                    <Border Grid.Row="4" Background="#FAFAFA" CornerRadius="10"
+                            BorderBrush="#E0E0E0" BorderThickness="1" Padding="4">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="DetectionReportsList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="14,10" Margin="0,0,0,1"
+                                                BorderBrush="#F0F0F0" BorderThickness="0,0,0,1">
+                                            <StackPanel Orientation="Horizontal">
+                                                <materialDesign:PackIcon Kind="AlertOutline"
+                                                                         Width="16" Height="16"
+                                                                         Foreground="#FF9800"
+                                                                         VerticalAlignment="Center"
+                                                                         Margin="0,0,10,0"/>
+                                                <TextBlock Text="{Binding}" FontSize="13" Foreground="#616161"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="CompactPanel"
+                    Visibility="Collapsed"
+                    Background="White"
+                    BorderBrush="#E0E0E0"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="10"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch">
+                <StackPanel>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Background="#F5F5F5"
+                                BorderBrush="#E0E0E0"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="6,3">
+                            <TextBlock x:Name="TxtCompactMonitoringStatus"
+                                       Text="Monitoring: Waiting"
+                                       FontSize="9"
+                                       Foreground="#616161"/>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock x:Name="TxtCompactLeavePermission"
+                               Text="Leave Permission: Allowed"
+                               FontSize="10"
+                               Foreground="#2E7D32"
+                               Margin="0,0,0,2"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

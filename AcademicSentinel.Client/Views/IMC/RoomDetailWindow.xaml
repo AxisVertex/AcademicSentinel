@@ -1,0 +1,437 @@
+﻿<Window x:Class="AcademicSentinel.Client.Views.IMC.RoomDetailWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        mc:Ignorable="d"
+        Title="Teacher Dashboard Interface"
+        Height="720" Width="1280"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5"
+        FontFamily="{materialDesign:MaterialDesignFont}"
+        TextElement.Foreground="#1B1B1B"
+        TextElement.FontSize="14">
+
+    <Window.Resources>
+        <Color x:Key="FEUGreen">#1B5E20</Color>
+        <Color x:Key="FEUGreenLight">#2E7D32</Color>
+        <Color x:Key="FEUGreenDark">#0D3B12</Color>
+        <Color x:Key="FEUGold">#FFB300</Color>
+        <Color x:Key="FEULightGray">#F0F2F5</Color>
+        <Color x:Key="FEUSubText">#616161</Color>
+
+        <SolidColorBrush x:Key="FEUGreenBrush" Color="{StaticResource FEUGreen}"/>
+        <SolidColorBrush x:Key="FEUGreenLightBrush" Color="{StaticResource FEUGreenLight}"/>
+        <SolidColorBrush x:Key="FEUGreenDarkBrush" Color="{StaticResource FEUGreenDark}"/>
+        <SolidColorBrush x:Key="FEUGoldBrush" Color="{StaticResource FEUGold}"/>
+        <SolidColorBrush x:Key="FEULightGrayBrush" Color="{StaticResource FEULightGray}"/>
+        <SolidColorBrush x:Key="FEUSubTextBrush" Color="{StaticResource FEUSubText}"/>
+
+        <!-- Sidebar button -->
+        <Style x:Key="SidebarButtonStyle" TargetType="RadioButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="ButtonBorder" Background="Transparent"
+                                CornerRadius="12" Padding="12" Margin="6,4" Cursor="Hand">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#33FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource FEUGoldBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Primary Button -->
+        <Style x:Key="PrimaryBtn" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource FEUGreenBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="22,11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource FEUGreenLightBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource FEUGreenDarkBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Outline Button -->
+        <Style x:Key="OutlineBtn" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource FEUGreenBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource FEUGreenBrush}" BorderThickness="1.5"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#0D1B5E20"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="78"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== LEFT SIDEBAR ===== -->
+        <Border Grid.Column="0" Background="{StaticResource FEUGreenBrush}" CornerRadius="0,20,20,0">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="20" ShadowDepth="3" Opacity="0.15" Color="Black" Direction="0"/>
+            </Border.Effect>
+            <DockPanel LastChildFill="False">
+                <!-- Teacher Profile Picture (top of sidebar) -->
+                <StackPanel DockPanel.Dock="Top" Margin="0,20,0,10" HorizontalAlignment="Center">
+                    <Border Width="48" Height="48" CornerRadius="24"
+                            Background="#E8E8E8"
+                            BorderBrush="{StaticResource FEUGoldBrush}" BorderThickness="2">
+                        <Grid>
+                            <materialDesign:PackIcon x:Name="SidebarDefaultIcon" Kind="AccountCircle"
+                                                     Width="30" Height="30" Foreground="White"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Ellipse x:Name="SidebarProfileImage" Width="44" Height="44" Visibility="Collapsed">
+                                <Ellipse.Fill>
+                                    <ImageBrush x:Name="SidebarProfileBrush" Stretch="UniformToFill"/>
+                                </Ellipse.Fill>
+                            </Ellipse>
+                        </Grid>
+                    </Border>
+                    <TextBlock x:Name="TxtSidebarProfName" Text="" FontSize="8" Foreground="White"
+                               HorizontalAlignment="Center" Margin="0,4,0,0"
+                               TextTrimming="CharacterEllipsis" MaxWidth="60" TextAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Top" Margin="0,20,0,0">
+                    <RadioButton Style="{StaticResource SidebarButtonStyle}"
+                                 GroupName="NavGroup" Click="NavProfile_Click"
+                                 ToolTip="Account Profile">
+                        <StackPanel HorizontalAlignment="Center">
+                            <materialDesign:PackIcon Kind="AccountCircle" Width="28" Height="28" Foreground="White"/>
+                            <TextBlock Text="Profile" FontSize="9" Foreground="White"
+                                       HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource SidebarButtonStyle}"
+                                 GroupName="NavGroup" IsChecked="True" Click="NavCourses_Click"
+                                 ToolTip="Room Courses">
+                        <StackPanel HorizontalAlignment="Center">
+                            <materialDesign:PackIcon Kind="SchoolOutline" Width="28" Height="28" Foreground="White"/>
+                            <TextBlock Text="Courses" FontSize="9" Foreground="White"
+                                       HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,20">
+                    <RadioButton Style="{StaticResource SidebarButtonStyle}" GroupName="NavGroup" ToolTip="Help" Click="NavHelp_Click">     
+                        <StackPanel HorizontalAlignment="Center">
+                            <materialDesign:PackIcon Kind="HelpCircleOutline" Width="28" Height="28" Foreground="White"/>
+                            <TextBlock Text="Help" FontSize="9" Foreground="White"
+                   HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== CONTENT ===== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="70"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Top Bar -->
+            <Border Grid.Row="0" Background="White" Padding="30,0">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.06" Color="Black"/>
+                </Border.Effect>
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Teacher Dashboard Interface"
+                               FontSize="13" FontWeight="Medium"
+                               Foreground="{StaticResource FEUSubTextBrush}" VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+
+            <!-- Course Header Banner -->
+            <Border Grid.Row="1" Margin="24,20,24,0" Background="White"
+                    CornerRadius="12" Padding="28,20">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.05" Color="Black"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="TxtRoomTitle"
+                               Text="2TSYS2526 - MATH - TN310-2"
+                               FontSize="22" FontWeight="Bold"
+                               Foreground="{StaticResource FEUGreenBrush}"
+                               VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Content="← Back"
+                            Style="{StaticResource OutlineBtn}"
+                            Click="BtnBack_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- Initializing New Monitoring Session -->
+            <Border Grid.Row="2" Margin="24,16,24,0"
+                    Background="White" CornerRadius="12" Padding="28,32">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.05" Color="Black"/>
+                </Border.Effect>
+                <StackPanel HorizontalAlignment="Center">
+                    <Border Width="56" Height="56" CornerRadius="28"
+                            Background="{StaticResource FEULightGrayBrush}"
+                            HorizontalAlignment="Center" Margin="0,0,0,12">
+                        <materialDesign:PackIcon Kind="Plus" Width="32" Height="32"
+                                                 Foreground="{StaticResource FEUGreenBrush}"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="Initializing New Monitoring Session"
+                               FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource FEUSubTextBrush}"
+                               HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                    <Button Content="Create Session"
+                            Style="{StaticResource PrimaryBtn}"
+                            Click="BtnCreateSession_Click"
+                            HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Past Sessions -->
+            <Border Grid.Row="3" Margin="24,16,24,24"
+                    Background="White" CornerRadius="12" Padding="24">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.05" Color="Black"/>
+                </Border.Effect>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Past Session"
+                                   FontSize="17" FontWeight="Bold"
+                                   Foreground="{StaticResource FEUGreenBrush}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Style="{StaticResource PrimaryBtn}"
+                                Click="BtnStudentList_Click" Padding="16,8">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="AccountMultipleOutline" Width="18" Height="18"
+                                                         VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="Student List" VerticalAlignment="Center" FontSize="13"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <!-- Search + Filter Bar -->
+                    <Grid Grid.Row="1" Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="#FAFAFA"
+                                BorderBrush="#E0E0E0" BorderThickness="1.5"
+                                CornerRadius="6" Padding="12,8" MaxWidth="360"
+                                HorizontalAlignment="Left">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="Magnify"
+                                                         Width="18" Height="18"
+                                                         Foreground="#9E9E9E" Margin="0,0,8,0"
+                                                         VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" x:Name="TxtSearch"
+                                         BorderThickness="0" Background="Transparent"
+                                         FontSize="13" VerticalContentAlignment="Center"
+                                         materialDesign:HintAssist.Hint="Search session Id or Date"
+                                         TextChanged="TxtSearch_TextChanged"/>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <TextBlock Text="Filter by Status:" FontSize="12"
+                                       Foreground="{StaticResource FEUSubTextBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <ComboBox x:Name="CmbFilter" Width="140"
+                                      SelectionChanged="CmbFilter_SelectionChanged"
+                                      VerticalContentAlignment="Center">
+                                <ComboBoxItem Content="All Sessions" IsSelected="True"/>
+                                <ComboBoxItem Content="Completed"/>
+                                <ComboBoxItem Content="Interrupted"/>
+                                <ComboBoxItem Content="In Progress"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Table Header -->
+                    <Border Grid.Row="2" Background="{StaticResource FEULightGrayBrush}"
+                            CornerRadius="6,6,0,0" Padding="16,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.1*"/>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="1.4*"/>
+                                <ColumnDefinition Width="1.6*"/>
+                                <ColumnDefinition Width="0.9*"/>
+                                <ColumnDefinition Width="1.3*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="# Session ID" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Grid.Column="1" Text="Date &amp; Duration" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Grid.Column="2" Text="Exam Type" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Grid.Column="3" Text="Status" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Grid.Column="4" Text="# Students" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Grid.Column="5" Text="Action" FontWeight="SemiBold" FontSize="13"
+                                       HorizontalAlignment="Right"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Session rows -->
+                    <Border Grid.Row="3" BorderBrush="#E0E0E0" BorderThickness="1,0,1,1"
+                            CornerRadius="0,0,6,6">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <Grid>
+                                <ItemsControl x:Name="SessionsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="16,14" BorderBrush="#F0F0F0" BorderThickness="0,0,0,1">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="1.1*"/>
+                                                        <ColumnDefinition Width="2*"/>
+                                                        <ColumnDefinition Width="1.4*"/>
+                                                        <ColumnDefinition Width="1.6*"/>
+                                                        <ColumnDefinition Width="0.9*"/>
+                                                        <ColumnDefinition Width="1.3*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding SessionId}"
+                                                               FontSize="13" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding DateDuration}"
+                                                               FontSize="13" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding ExamType}"
+                                                               FontSize="13" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding StatusText}"
+                                                               FontSize="13" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="4" Text="{Binding StudentCount}"
+                                                               FontSize="13" VerticalAlignment="Center"/>
+                                                    <Button Grid.Column="5" Tag="{Binding}"
+                                                            HorizontalAlignment="Right"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Cursor="Hand" Padding="10,4"
+                                                            Click="SessionAction_Click">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="View Session"
+                                                                       Foreground="{StaticResource FEUGreenBrush}"
+                                                                       FontWeight="SemiBold" FontSize="13"/>
+                                                            <TextBlock Text=" ▾"
+                                                                       Foreground="{StaticResource FEUGreenBrush}"
+                                                                       FontSize="11"/>
+                                                        </StackPanel>
+                                                        <Button.ContextMenu>
+                                                            <ContextMenu>
+                                                                <MenuItem Header="View Session" Click="ViewSession_Click"/>
+                                                                <MenuItem Header="Delete Session" Click="DeleteSession_Click"/>
+                                                            </ContextMenu>
+                                                        </Button.ContextMenu>
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <StackPanel x:Name="EmptySessionList" VerticalAlignment="Center"
+                                            HorizontalAlignment="Center" Margin="0,40" Visibility="Collapsed">
+                                    <materialDesign:PackIcon Kind="History" Width="48" Height="48"
+                                                             Foreground="#E0E0E0"
+                                                             HorizontalAlignment="Center"/>
+                                    <TextBlock Text="No past sessions" FontSize="13" Foreground="#BDBDBD"
+                                               HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- Pagination -->
+                    <Grid Grid.Row="4" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="TxtPaginationInfo"
+                                   Text="Showing 0 of 0 sessions"
+                                   FontSize="12" Foreground="{StaticResource FEUSubTextBrush}"
+                                   VerticalAlignment="Center"/>
+
+                        <StackPanel Grid.Column="1" x:Name="PaginationPanel" Orientation="Horizontal" Visibility="Collapsed">
+                            <Button Content="Previous" Style="{StaticResource OutlineBtn}"
+                                    Padding="12,6" FontSize="12" Margin="0,0,6,0"/>
+                            <Button Content="1" Style="{StaticResource PrimaryBtn}"
+                                    Padding="12,6" FontSize="12" Margin="0,0,6,0"/>
+                            <Button Content="Next" Style="{StaticResource OutlineBtn}"
+                                    Padding="12,6" FontSize="12"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,294 @@
+<Window x:Class="AcademicSentinel.Client.Views.Shared.HelpGuideWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        Title="FourCUDA - Help Guide"
+        Height="720" Width="900"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F5F5"
+        FontFamily="{materialDesign:MaterialDesignFont}">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="FEUGreenBrush" Color="#1B5E20"/>
+        <SolidColorBrush x:Key="FEUGreenLightBrush" Color="#2E7D32"/>
+        <SolidColorBrush x:Key="FEUGoldBrush" Color="#FFB300"/>
+
+        <Style x:Key="StepCard" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="18,14"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.06" Color="Black"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="StepNumber" TargetType="Border">
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Background" Value="#1B5E20"/>
+            <Setter Property="Margin" Value="0,0,14,0"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="White" Padding="30,20">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.06" Color="Black"/>
+            </Border.Effect>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Width="48" Height="48" CornerRadius="12"
+                        Background="#E8F5E9" Margin="0,0,16,0">
+                    <materialDesign:PackIcon Kind="HelpCircleOutline"
+                                             Width="28" Height="28"
+                                             Foreground="#1B5E20"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Center"/>
+                </Border>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock x:Name="TxtHelpTitle" Text="Teacher Help Guide"
+                               FontSize="22" FontWeight="Bold" Foreground="#1B5E20"/>
+                    <TextBlock x:Name="TxtHelpSubtitle" Text="Learn how to use the FourCUDA Anti-Cheating System"
+                               FontSize="13" Foreground="#9E9E9E" Margin="0,2,0,0"/>
+                </StackPanel>
+
+                <Button Grid.Column="2" Content="Close" Padding="20,8" FontSize="13"
+                        Cursor="Hand" Click="BtnClose_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="btnBorder" Background="Transparent"
+                                    BorderBrush="#E0E0E0" BorderThickness="1.5"
+                                    CornerRadius="8" Padding="20,8" Cursor="Hand">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="btnBorder" Property="Background" Value="#FFEBEE"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="30,20,30,10">
+            <Grid>
+            <!-- Teacher Guide Content -->
+            <StackPanel x:Name="TeacherGuidePanel" Visibility="Visible">
+
+                <!-- Getting Started Section -->
+                <TextBlock Text="Getting Started" FontSize="18" FontWeight="Bold" Foreground="#1B5E20" Margin="0,0,0,14"/>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="1" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Create your Account" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="Use your school email and your password. You'll use these credentials to login."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="2" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Create a Course Room" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="Go to Courses tab and click 'Create'. Enter your course code, subject, and section to set up a room. Share the course code to your students so they can enroll."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="3" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Create an Exam Session" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="Open a course room, click 'Create Session'. Choose the exam type (Summative, Midterm, Final) and configure the session."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Monitoring Section -->
+                <TextBlock Text="Session Monitoring" FontSize="18" FontWeight="Bold" Foreground="#1B5E20" Margin="0,20,0,14"/>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="4" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Monitor Live Sessions" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="View real-time participant activity. See who's connected, track violations (tab switching, VM detection, screen capture), and review logs."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="5" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Manage Students" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="Click on any participant to view details. You can remove students from sessions, check their violation count, and review individual logs."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Anti-Cheat Rules Section -->
+                <TextBlock Text="Anti-Cheating Detection Rules" FontSize="18" FontWeight="Bold" Foreground="#1B5E20" Margin="0,20,0,14"/>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel>
+                        <TextBlock Text="Available Detection Rules:" FontSize="14" FontWeight="SemiBold" Foreground="#1B1B1B" Margin="0,0,0,10"/>
+                        <StackPanel Margin="10,0,0,0">
+                            <TextBlock FontSize="13" Foreground="#616161" Margin="0,0,0,6" TextWrapping="Wrap">
+                                <Run FontWeight="SemiBold" Foreground="#1B5E20">Tab Switching</Run> - Detects when students switch to other browser tabs or applications
+                            </TextBlock>
+                            <TextBlock FontSize="13" Foreground="#616161" Margin="0,0,0,6" TextWrapping="Wrap">
+                                <Run FontWeight="SemiBold" Foreground="#1B5E20">Virtual Machine Detection</Run> - Identifies if the exam is running inside a VM
+                            </TextBlock>
+                            <TextBlock FontSize="13" Foreground="#616161" Margin="0,0,0,6" TextWrapping="Wrap">
+                                <Run FontWeight="SemiBold" Foreground="#1B5E20">Clipboard Monitoring</Run> - Tracks copy/paste activities during the exam
+                            </TextBlock>
+                            <TextBlock FontSize="13" Foreground="#616161" TextWrapping="Wrap">
+                                <Run FontWeight="SemiBold" Foreground="#1B5E20">Fullscreen Lockdown</Run> - Forces the exam to remain in fullscreen mode
+                            </TextBlock>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Student Guide Content (shown when opened from student side) -->
+            <StackPanel x:Name="StudentGuidePanel" Visibility="Collapsed">
+
+                <TextBlock Text="Getting Started" FontSize="18" FontWeight="Bold" Foreground="#1B5E20" Margin="0,0,0,14"/>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="1" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Log In Your Account" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="Use your School Email and password to login."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="2" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="View Your Enrolled Courses" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="Your Dashboard shows all the courses that you are enrolled in."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="3" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Join an Exam Session" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="Click the course that you are required to take an exam and join the session."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- During Exam Section -->
+                <TextBlock Text="During the Exam" FontSize="18" FontWeight="Bold" Foreground="#1B5E20" Margin="0,20,0,14"/>
+
+                <Border Style="{StaticResource StepCard}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource StepNumber}">
+                            <TextBlock Text="4" Foreground="White" FontWeight="Bold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Stay Focused on the Exam" FontSize="15" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+                            <TextBlock Text="Do not switch tabs, open other applications, or use virtual machines. The system monitors your activity and reports violations to your teacher."
+                                       FontSize="13" Foreground="#616161" TextWrapping="Wrap" MaxWidth="680"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Important Rules -->
+                <TextBlock Text="Important Rules" FontSize="18" FontWeight="Bold" Foreground="#D32F2F" Margin="0,20,0,14"/>
+
+                <Border Style="{StaticResource StepCard}" BorderBrush="#FFCDD2" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="The following actions may be flagged as violations:" FontSize="14" FontWeight="SemiBold" Foreground="#D32F2F" Margin="0,0,0,10"/>
+                        <StackPanel Margin="10,0,0,0">
+                            <TextBlock Text="- Switching to another tab or application" FontSize="13" Foreground="#616161" Margin="0,0,0,4"/>
+                            <TextBlock Text="- Using copy/paste during the exam" FontSize="13" Foreground="#616161" Margin="0,0,0,4"/>
+                            <TextBlock Text="- Running the exam in a virtual machine" FontSize="13" Foreground="#616161" Margin="0,0,0,4"/>
+                            <TextBlock Text="- Exiting fullscreen mode" FontSize="13" Foreground="#616161"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+            </Grid>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <Border Grid.Row="2" Background="White" Padding="30,14">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="8" ShadowDepth="-1" Opacity="0.06" Color="Black"/>
+            </Border.Effect>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <materialDesign:PackIcon Kind="ShieldCheckOutline" Width="18" Height="18"
+                                         Foreground="#1B5E20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Text="FourCUDA Anti-Cheating System - FEU Tech"
+                           FontSize="12" Foreground="#9E9E9E" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

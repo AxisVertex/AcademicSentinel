@@ -1,0 +1,365 @@
+﻿<Window x:Class="AcademicSentinel.Client.Views.IMC.CreateSessionSetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        mc:Ignorable="d"
+        Title="Create Session Setup Interface"
+        Height="620" Width="1000"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F5F5"
+        FontFamily="{materialDesign:MaterialDesignFont}"
+        TextElement.Foreground="#1B1B1B"
+        TextElement.FontSize="14">
+
+    <Window.Resources>
+        <Color x:Key="FEUGreen">#1B5E20</Color>
+        <Color x:Key="FEUGreenLight">#2E7D32</Color>
+        <Color x:Key="FEUGreenDark">#0D3B12</Color>
+        <Color x:Key="FEULightGray">#F0F2F5</Color>
+        <Color x:Key="FEUSubText">#616161</Color>
+
+        <Color x:Key="FEUDarkText">#1B1B1B</Color>
+        <SolidColorBrush x:Key="FEUDarkTextBrush" Color="{StaticResource FEUDarkText}"/>
+
+        <SolidColorBrush x:Key="FEUGreenBrush" Color="{StaticResource FEUGreen}"/>
+        <SolidColorBrush x:Key="FEUGreenLightBrush" Color="{StaticResource FEUGreenLight}"/>
+        <SolidColorBrush x:Key="FEUGreenDarkBrush" Color="{StaticResource FEUGreenDark}"/>
+        <SolidColorBrush x:Key="FEULightGrayBrush" Color="{StaticResource FEULightGray}"/>
+        <SolidColorBrush x:Key="FEUSubTextBrush" Color="{StaticResource FEUSubText}"/>
+
+        <Style x:Key="PrimaryBtn" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource FEUGreenBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="28,12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource FEUGreenLightBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource FEUGreenDarkBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="OutlineBtn" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource FEUGreenBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource FEUGreenBrush}" BorderThickness="1.5"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#0D1B5E20"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Exam Type Item Style -->
+        <Style x:Key="ExamTypeItem" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,0,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="b" Background="Transparent"
+                                CornerRadius="6" Padding="14,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="18" Height="18"
+                                        CornerRadius="9" BorderThickness="2"
+                                        BorderBrush="#BDBDBD" Margin="0,0,12,0">
+                                    <Ellipse x:Name="dot" Width="8" Height="8"
+                                             Fill="{StaticResource FEUGreenBrush}"
+                                             Visibility="Collapsed"/>
+                                </Border>
+                                <ContentPresenter Grid.Column="1" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#F0F2F5"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#E8F5E9"/>
+                                <Setter TargetName="dot" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Rule CheckBox -->
+        <Style x:Key="RuleCheck" TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="56"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Bar -->
+        <Border Grid.Row="0" Background="White" Padding="24,0">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.06" Color="Black"/>
+            </Border.Effect>
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Create Session Setup Interface"
+                           FontSize="13" FontWeight="Medium"
+                           Foreground="{StaticResource FEUSubTextBrush}"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="← Back"
+                        Style="{StaticResource OutlineBtn}"
+                        Click="BtnBack_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- Main 2-column content -->
+        <Grid Grid.Row="1" Margin="24,24,24,24">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280"/>
+                <ColumnDefinition Width="20"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT: Type of Exam -->
+            <Border Grid.Column="0" Background="White" CornerRadius="12" Padding="20">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.05" Color="Black"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock Text="Type of Exam"
+                               FontSize="15" FontWeight="Bold"
+                               Foreground="{StaticResource FEUGreenBrush}"
+                               Margin="0,0,0,14"/>
+
+                    <RadioButton x:Name="RbSummative" GroupName="ExamType"
+                                 Style="{StaticResource ExamTypeItem}" IsChecked="True">
+                        <StackPanel>
+                            <TextBlock Text="Summative" FontWeight="SemiBold" FontSize="14"/>
+                            <TextBlock Text="Quiz &amp; short assessments"
+                                       FontSize="11" Foreground="{StaticResource FEUSubTextBrush}"/>
+                        </StackPanel>
+                    </RadioButton>
+
+                    <RadioButton x:Name="RbMidterm" GroupName="ExamType"
+                                 Style="{StaticResource ExamTypeItem}">
+                        <StackPanel>
+                            <TextBlock Text="Midterm" FontWeight="SemiBold" FontSize="14"/>
+                            <TextBlock Text="Mid-semester examination"
+                                       FontSize="11" Foreground="{StaticResource FEUSubTextBrush}"/>
+                        </StackPanel>
+                    </RadioButton>
+
+                    <RadioButton x:Name="RbFinal" GroupName="ExamType"
+                                 Style="{StaticResource ExamTypeItem}">
+                        <StackPanel>
+                            <TextBlock Text="Final" FontWeight="SemiBold" FontSize="14"/>
+                            <TextBlock Text="Final examination"
+                                       FontSize="11" Foreground="{StaticResource FEUSubTextBrush}"/>
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+            </Border>
+
+            <!-- RIGHT: Session Detection Rules -->
+            <Border Grid.Column="2" Background="White" CornerRadius="12" Padding="24">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.05" Color="Black"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Session Detection Rules Setup"
+                               FontSize="15" FontWeight="Bold"
+                               Foreground="{StaticResource FEUGreenBrush}"
+                               Margin="0,0,0,16"/>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="0,0,10,0">
+                            <TextBlock Text="Select which actions should trigger detection alerts during the session:"
+                                       FontSize="12" Foreground="{StaticResource FEUSubTextBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+                            <CheckBox x:Name="ChkTabSwitch" Style="{StaticResource RuleCheck}" IsChecked="True"
+                                      Content="Detect tab switching / Alt+Tab (Focus Detection)"/>
+
+                            <CheckBox x:Name="ChkVirtualMachine" Style="{StaticResource RuleCheck}" IsChecked="True"
+                                      Content="Detect virtual machine environments"/>
+
+                            <CheckBox x:Name="ChkClipboard" Style="{StaticResource RuleCheck}" IsChecked="True"
+                                      Content="Monitor clipboard actions (Copy/Paste)"/>
+
+                            <CheckBox x:Name="ChkProcess" Style="{StaticResource RuleCheck}" IsChecked="True"
+                                      Content="Detect unauthorized apps (Discord, OBS, etc.)"/>
+
+                            <CheckBox x:Name="ChkIdle" Style="{StaticResource RuleCheck}" IsChecked="True"
+                                      Content="Detect student inactivity (Idle Mode)"
+                                      Checked="ChkIdle_CheckedChanged" Unchecked="ChkIdle_CheckedChanged"/>
+
+                            <StackPanel x:Name="IdleTimePanel" Orientation="Horizontal" Margin="24,0,0,14" IsEnabled="True" Opacity="1.0">
+                                <TextBlock Text="Idle Threshold (Seconds):" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource FEUDarkTextBrush}" Margin="0,0,10,0"/>
+
+                                <Border BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Width="60" Background="White">
+                                    <TextBox x:Name="TxtIdleSeconds" Text="60" Padding="6,4" TextAlignment="Center" BorderThickness="0" Background="Transparent"/>
+                                </Border>
+                            </StackPanel>
+
+                            <Border Background="#FFF3E0" CornerRadius="6" Padding="12" Margin="0,10,0,0" BorderBrush="#FFCC80" BorderThickness="1">
+                                <CheckBox x:Name="ChkStrictMode" Style="{StaticResource RuleCheck}" Margin="0"
+                                          Foreground="#E65100" FontWeight="SemiBold"
+                                          Content="Enable Strict Mode (Auto-flag severe violations)"/>
+                            </Border>
+
+                            <Border Background="#F6F8FA" CornerRadius="8" Padding="12" Margin="0,14,0,0" BorderBrush="#E5E7EB" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="Monitoring Timer"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource FEUDarkTextBrush}"
+                                               Margin="0,0,0,8"/>
+
+                                    <CheckBox x:Name="ChkEnableMonitoringTimer"
+                                              Content="Enable timer auto-stop"
+                                              IsChecked="False"
+                                              Margin="0,0,0,10"
+                                              Checked="ChkEnableMonitoringTimer_CheckedChanged"
+                                              Unchecked="ChkEnableMonitoringTimer_CheckedChanged"/>
+
+                                    <StackPanel x:Name="MonitoringTimerOptions" Orientation="Horizontal" Margin="0,0,0,8" IsEnabled="False" Opacity="0.5">
+                                        <TextBlock Text="Duration:"
+                                                   Width="70"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource FEUSubTextBrush}"/>
+
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBox x:Name="TxtDurationHours"
+                                                     Width="48"
+                                                     Text="1"
+                                                     Padding="6,4"
+                                                     TextAlignment="Center"
+                                                     Margin="0,0,6,0"/>
+                                            <TextBlock Text="h" VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                                            <TextBox x:Name="TxtDurationMinutes"
+                                                     Width="48"
+                                                     Text="0"
+                                                     Padding="6,4"
+                                                     TextAlignment="Center"
+                                                     Margin="0,0,6,0"/>
+                                            <TextBlock Text="m" VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                                            <TextBox x:Name="TxtDurationSeconds"
+                                                     Width="48"
+                                                     Text="0"
+                                                     Padding="6,4"
+                                                     TextAlignment="Center"
+                                                     Margin="0,0,6,0"/>
+                                            <TextBlock Text="s" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <TextBlock Text="Minimum timer duration: 1 second"
+                                               FontSize="11"
+                                               Foreground="{StaticResource FEUSubTextBrush}"
+                                               Margin="70,0,0,8"/>
+
+                                    <StackPanel x:Name="MonitoringStopBehaviorPanel" IsEnabled="False" Opacity="0.5">
+                                        <TextBlock Text="When monitoring stops:"
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource FEUSubTextBrush}"
+                                                   Margin="0,0,0,6"/>
+
+                                        <RadioButton x:Name="RbEndSessionImmediately"
+                                                     GroupName="StopBehavior"
+                                                     IsChecked="True"
+                                                     Margin="0,0,0,4"
+                                                     Content="End session immediately"/>
+                                        <RadioButton x:Name="RbStopMonitoringOnly"
+                                                     GroupName="StopBehavior"
+                                                     Content="Stop monitoring only (keep session active)"/>
+                                    </StackPanel>
+
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#F6F8FA" CornerRadius="8" Padding="12" Margin="0,10,0,0" BorderBrush="#E5E7EB" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="Monitoring Countdown"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource FEUDarkTextBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Countdown (seconds):"
+                                                   Width="130"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource FEUSubTextBrush}"/>
+                                        <TextBox x:Name="TxtStartDelaySeconds"
+                                                 Width="60"
+                                                 Text="10"
+                                                 Padding="6,4"
+                                                 TextAlignment="Center"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <Grid Grid.Row="2" Margin="0,20,0,0">
+                        <Button x:Name="BtnStartSession" Content="Save Rules &amp; Continue"
+                                Style="{StaticResource PrimaryBtn}"
+                                Click="BtnStartSession_Click"
+                                HorizontalAlignment="Right"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

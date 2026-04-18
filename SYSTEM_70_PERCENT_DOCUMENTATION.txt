@@ -1,0 +1,185 @@
+AcademicSentinel (Approx. 70% System Capability Documentation)
+Generated for current workspace state
+
+============================================================
+1) SYSTEM OVERVIEW
+============================================================
+AcademicSentinel currently operates as a two-side platform:
+- IMC (Instructor Monitoring Console) in AcademicSentinel.Client
+- SAC (Secure Assessment Client) in AcademicSentinel.Client
+Backed by:
+- AcademicSentinel.Server (.NET 10)
+- SQLite persistence via AppDbContext
+- SignalR real-time hub for live monitoring events
+
+Primary implemented flow:
+1. Instructor creates room/session setup
+2. Session starts and room becomes Active
+3. Student joins SAC live exam
+4. SAC runs active detections during monitoring
+5. Violations/events are sent in real time to server and IMC
+6. Session ends and records remain in database for reports/history
+
+
+============================================================
+2) CLIENT CAPABILITIES (IMC + SAC)
+============================================================
+
+A) Instructor Monitoring Console (IMC)
+------------------------------------------------------------
+Implemented:
+- Authentication/login-based entry
+- Course/room dashboard (default tab now Courses)
+- Create room/course
+- Delete room/course
+- Room/session setup UI with detection toggles
+- Start/stop monitoring and start countdown
+- Live session monitoring window:
+  - connected participants view
+  - join/disconnect updates
+  - real-time violation feed
+  - timer/countdown state
+- Remove student from live session
+- View violation summary and report-related data
+- Profile image upload/change
+- Profile update (name/email) via server API
+- Password change via server API
+
+B) Student Side (SAC)
+------------------------------------------------------------
+Implemented:
+- Student dashboard with enrolled courses
+- Waiting room behavior and join gating based on room status
+- Enter secure live session window
+- Real-time detection runtime activation only when monitoring is active
+- SignalR delivery of monitoring events to server/IMC
+- Pending queue for temporary disconnection scenarios
+- Profile image upload/change
+- Profile update (name/email) via server API
+- Password change via server API
+
+C) SAC Detection Modules currently integrated
+------------------------------------------------------------
+1. Real-Time Focus Monitoring (RTFM)
+- Window switching detection (event-driven by foreground window changes)
+- Logs include from-window and to-window details
+- Switches to SAC are not flagged
+- Temporary exemption logic when returning from SAC to previous window
+
+2. Clipboard & Screenshot Activity Detection (CSAD)
+- Clipboard change detection (sequence-based)
+- Ctrl+C and Ctrl+V behavior detection
+- Screenshot/image clipboard detection (clipboard contains image)
+
+3. Idle Detection (IDLE)
+- Keyboard/mouse inactivity monitoring
+- Warning/violation/critical escalation
+- Idle baseline starts when monitoring runtime becomes active (post-countdown)
+- Debug feed entry indicates idle baseline start time
+
+4. Process Blacklisting Detection (PBD)
+- Unauthorized process detection
+- Continuous background process scanning with anti-spam behavior
+
+
+============================================================
+3) SERVER CAPABILITIES
+============================================================
+
+A) Authentication & Identity (AuthController)
+------------------------------------------------------------
+Implemented:
+- Register user (role-based)
+- Login with BCrypt password verification
+- JWT issuance (NameIdentifier, Role claims)
+- Update profile endpoint (name/email) for authenticated user
+- Change password endpoint (current password verification + BCrypt rehash)
+
+B) Room/Session Management (RoomsController)
+------------------------------------------------------------
+Implemented:
+- Create/get/delete rooms (instructor-scoped operations)
+- Start exam session (marks room Active)
+- End exam session (marks session completed, room Pending)
+- Session history per room
+- Save/get room detection settings
+- Instructor room list
+- Student enrolled room list
+- Room participants listing with connection/participation status
+- Student unenroll/remove-from-session operations
+- Enrollment state constraints are enforced in workflow (Pending/Active rules)
+
+C) Real-Time Monitoring Hub (MonitoringHub)
+------------------------------------------------------------
+Implemented:
+- Join room/live exam SignalR group flows
+- Monitoring state toggles and countdown broadcasts
+- Student join/disconnect broadcasts
+- Receive monitoring events from SAC
+- Persist monitoring event records
+- Relay violation alerts to instructor listeners in real time
+
+D) Violations & Reports
+------------------------------------------------------------
+ViolationsController:
+- Accept violation reports
+- Persist violation logs
+- Broadcast alerts to room group
+- Instructor retrieval of room violations
+
+ReportsController:
+- Room-level reports and participant summaries
+- Student-level report with violation timeline
+- Basic risk scoring/classification from severity data
+
+E) Images (ImagesController + ImageStorageService)
+------------------------------------------------------------
+Implemented:
+- Profile image upload/get/delete
+- Room image upload/get/delete
+- Image metadata persisted in database
+- Validation and storage management through image service
+
+
+============================================================
+4) DATABASE / PERSISTENCE (CURRENTLY USED)
+============================================================
+The system is persisting key entities including:
+- Users
+- Rooms
+- RoomDetectionSettings
+- RoomEnrollments
+- ExamSessions
+- SessionParticipants
+- MonitoringEvents
+- ViolationLogs
+- SessionAssignments
+- RiskSummaries
+- Image metadata fields on User and Room
+
+
+============================================================
+5) WHAT THIS “~70%” STATE MEANS IN PRACTICE
+============================================================
+The platform already supports real classroom trial flow with:
+- role-based access
+- room/session lifecycle
+- live student connection tracking
+- real-time detection event reporting
+- persisted logs and report endpoints
+- profile/password and image management
+
+Likely remaining work before “production-complete”:
+- hardening security and validation edge cases
+- deeper anti-tamper and environment checks
+- stronger analytics/risk engine refinement
+- UX polish and error-handling consistency
+- load/performance testing and deployment hardening
+
+
+============================================================
+6) IMPORTANT NOTES
+============================================================
+- This document reflects the current workspace implementation state.
+- It is an approximation summary (“70%”) for planning and communication.
+- For strict API contracts, source of truth remains controllers/hub/DTO files.
