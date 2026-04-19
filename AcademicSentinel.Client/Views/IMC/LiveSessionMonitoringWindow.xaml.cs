@@ -47,6 +47,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private ICollectionView _logsView;
         private LiveStudentStatus _selectedStudent;
         private List<ParticipantDto> _allParticipants = new List<ParticipantDto>();
+        private readonly Dictionary<int, bool> _leaveRequestedStateByStudentId = new();
 
         public ObservableCollection<LiveStudentStatus> ActiveStudents { get; set; }
         public ObservableCollection<LogEntry> LogFeed { get; set; }
@@ -415,6 +416,8 @@ namespace AcademicSentinel.Client.Views.IMC
 
             _hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
             {
+                _leaveRequestedStateByStudentId[studentId] = true;
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent == null) return;
 
@@ -439,8 +442,9 @@ namespace AcademicSentinel.Client.Views.IMC
             {
                 await _hubConnection.InvokeAsync("GrantLeave", _roomId, student.StudentId);
 
+                _leaveRequestedStateByStudentId[student.StudentId] = false;
                 student.IsLeaveRequested = false;
-                student.Status = "Unlock Granted";
+                student.Status = "Approved to Leave";
                 student.StatusColor = "#1B5E20";
 
                 LogActivity(student.Email, "UNLOCK", "Instructor granted leave.", "#1B5E20");
@@ -483,6 +487,7 @@ namespace AcademicSentinel.Client.Views.IMC
 
                 foreach (var p in participants.Where(p => string.Equals(p.ConnectionStatus, "Connected", StringComparison.OrdinalIgnoreCase)))
                 {
+                    var isLeaveRequested = _leaveRequestedStateByStudentId.TryGetValue(p.StudentId, out var requested) && requested;
                     ActiveStudents.Add(new LiveStudentStatus
                     {
                         StudentId = p.StudentId,
@@ -493,8 +498,9 @@ namespace AcademicSentinel.Client.Views.IMC
                             : (p.ProfileImageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                                 ? p.ProfileImageUrl
                                 : $"{ApiEndpoints.BaseUrl}{p.ProfileImageUrl}"),
-                        Status = "Connected",
-                        StatusColor = "#4CAF50"
+                        IsLeaveRequested = isLeaveRequested,
+                        Status = isLeaveRequested ? "Wants to Leave" : "Connected",
+                        StatusColor = isLeaveRequested ? "#FF9800" : "#4CAF50"
                     });
                 }
 

@@ -226,6 +226,12 @@ public class MonitoringHub : Hub
         int authenticatedStudentId = int.Parse(userIdString);
         if (authenticatedStudentId != studentId) return;
 
+        var isParticipantInRoom = await _context.SessionParticipants
+            .AnyAsync(p => p.RoomId == roomId && p.StudentId == studentId);
+
+        if (!isParticipantInRoom)
+            return;
+
         await Clients.Group(roomId.ToString()).SendAsync("LeaveRequested", studentId);
     }
 
@@ -235,6 +241,13 @@ public class MonitoringHub : Hub
         if (!string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
             return;
 
+        var isParticipantInRoom = await _context.SessionParticipants
+            .AnyAsync(p => p.RoomId == roomId && p.StudentId == studentId);
+
+        if (!isParticipantInRoom)
+            return;
+
         await Clients.User(studentId.ToString()).SendAsync("LeaveGranted", studentId);
+        await Clients.Group(roomId.ToString()).SendAsync("LeaveApprovalUpdated", studentId, true);
     }
 }

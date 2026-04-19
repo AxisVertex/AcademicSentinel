@@ -5,6 +5,9 @@
         Title="Secure Assessment Client - FourCUDA"
         Height="720" Width="900"
         WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Topmost="True"
         Background="#F5F5F5"
         FontFamily="{materialDesign:MaterialDesignFont}"
         TextElement.Foreground="#1B1B1B"
@@ -34,24 +37,31 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <materialDesign:PackIcon Kind="ShieldCheckOutline" Width="24" Height="24"
+                <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <materialDesign:PackIcon Grid.Column="0" Kind="ShieldCheckOutline" Width="24" Height="24"
                                              Foreground="#1B5E20" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock x:Name="TxtHeaderSessionClock"
+                    <TextBlock Grid.Column="1" x:Name="TxtHeaderSessionClock"
                                Text=""
-                               FontSize="18" FontWeight="Bold"
-                               Foreground="#1B5E20" VerticalAlignment="Center"/>
-                </StackPanel>
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="#1B5E20" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                </Grid>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button x:Name="BtnHeaderExpand" Visibility="Collapsed" Margin="0,0,8,0"
+                    <Button x:Name="BtnHeaderExpand" Visibility="Collapsed" Margin="0,0,10,0"
                             Padding="10,6" FontSize="13" Cursor="Hand"
                             Content="□" Click="BtnExpandCompact_Click"/>
 
                     <Button x:Name="BtnRequestLeave"
-                            Content="Request Leave"
-                            Padding="16,8"
-                            FontSize="13"
+                            Content="Request to Leave"
+                            Padding="12,7"
+                            MinWidth="138"
+                            FontSize="12"
                             FontWeight="SemiBold"
                             Cursor="Hand"
                             Background="#D32F2F"

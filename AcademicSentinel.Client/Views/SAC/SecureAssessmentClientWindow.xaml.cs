@@ -250,6 +250,7 @@ namespace AcademicSentinel.Client.Views.SAC
             UpdateCompactCountdown();
             UpdateHeaderSessionClock();
             UpdateDetectorRuntimeState();
+            UpdateRequestLeaveButtonState();
         }
 
         private async Task RefreshMonitoringStateAsync()
@@ -474,7 +475,15 @@ namespace AcademicSentinel.Client.Views.SAC
                         if (grantedStudentId != currentStudentId)
                             return;
 
+                        StopMonitoringForApprovedLeave();
                         _leaveRequestState = LeaveRequestState.Unlocked;
+                        TxtMonitoringStatus.Text = "Permission Granted - Safe to Leave";
+                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                        if (FindName("TxtCompactLeavePermission") is TextBlock leavePerm)
+                        {
+                            leavePerm.Text = "Permission Granted - Safe to Leave";
+                            leavePerm.Foreground = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                        }
                         UpdateRequestLeaveButtonState();
                     });
                 });
@@ -554,6 +563,7 @@ namespace AcademicSentinel.Client.Views.SAC
                         _ = _hubConnection?.StopAsync();
                         _hubConnection = null;
                         UpdateDetectorRuntimeState();
+                        UpdateRequestLeaveButtonState();
                     });
                 });
 
@@ -570,8 +580,43 @@ namespace AcademicSentinel.Client.Views.SAC
             }
         }
 
+        private void StopMonitoringForApprovedLeave()
+        {
+            _monitoringCountdownEndsAt = null;
+            _monitoringStartedAt = null;
+            _isMonitoringActive = false;
+            _detectorsRunning = false;
+            _detectorRuntime?.SetMonitoringEnabled(false);
+            _pendingViolationQueue.Clear();
+            _lastViolationSentByType.Clear();
+
+            if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+            {
+                compactStatus.Text = "Monitoring: Paused";
+                compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97));
+            }
+
+            if (FindName("TxtHeaderSessionClock") is TextBlock headerClock)
+                headerClock.Text = string.Empty;
+
+            if (FindName("TxtFullCountdown") is TextBlock fullCountdown)
+                fullCountdown.Text = string.Empty;
+        }
+
         private async void BtnRequestLeave_Click(object sender, RoutedEventArgs e)
         {
+            if (_sessionEnded)
+            {
+                _allowClose = true;
+                _detectorsRunning = false;
+                _detectorRuntime?.SetMonitoringEnabled(false);
+                _statusTimer?.Stop();
+                _compactCountdownTimer?.Stop();
+                _detectorPollTimer?.Stop();
+                ReturnToStudentDashboard();
+                return;
+            }
+
             int studentId = SessionManager.CurrentUser?.Id ?? 0;
             if (studentId <= 0)
                 return;
@@ -615,22 +660,31 @@ namespace AcademicSentinel.Client.Views.SAC
             if (FindName("BtnRequestLeave") is not Button btn)
                 return;
 
+            if (_sessionEnded)
+            {
+                btn.Content = "Leave";
+                btn.IsEnabled = true;
+                btn.Background = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                btn.Foreground = Brushes.White;
+                return;
+            }
+
             switch (_leaveRequestState)
             {
                 case LeaveRequestState.Locked:
-                    btn.Content = "Request Leave";
+                    btn.Content = "Request to Leave";
                     btn.IsEnabled = true;
                     btn.Background = new SolidColorBrush(Color.FromRgb(211, 47, 47));
                     btn.Foreground = Brushes.White;
                     break;
                 case LeaveRequestState.Pending:
-                    btn.Content = "Waiting for Instructor...";
+                    btn.Content = "Pending Approval...";
                     btn.IsEnabled = false;
                     btn.Background = new SolidColorBrush(Color.FromRgb(158, 158, 158));
-                    btn.Foreground = Brushes.White;
+                    btn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#424242"));
                     break;
                 case LeaveRequestState.Unlocked:
-                    btn.Content = "Leave Session";
+                    btn.Content = "Permission Granted - Safe to Leave";
                     btn.IsEnabled = true;
                     btn.Background = new SolidColorBrush(Color.FromRgb(27, 94, 32));
                     btn.Foreground = Brushes.White;
@@ -795,7 +849,7 @@ namespace AcademicSentinel.Client.Views.SAC
                 return;
 
             WindowState = WindowState.Normal;
-            Width = 360;
+            Width = 420;
             Height = 220;
             ResizeMode = ResizeMode.NoResize;
             Topmost = true;
