@@ -164,7 +164,8 @@ public class RoomsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // Broadcast to SignalR that the session is over
+        // Broadcast to SignalR that the session is over and force-release soft lock states.
+        await _hubContext.Clients.Group(session.RoomId.ToString()).SendAsync("MonitoringStateChanged", false);
         await _hubContext.Clients.Group(session.RoomId.ToString()).SendAsync("SessionEnded");
 
         return Ok(new { message = "Session officially ended and logged in history." });

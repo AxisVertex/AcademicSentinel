@@ -158,15 +158,47 @@ public class MonitoringHub : Hub
                 // Update database to show they dropped
                 participant.ConnectionStatus = "Disconnected";
                 participant.DisconnectedAt = DateTime.UtcNow;
-
-                // Instantly alert the Teacher's Dashboard (IMC)!
-                await Clients.Group(participant.RoomId.ToString()).SendAsync("StudentDisconnected", studentId);
             }
 
             await _context.SaveChangesAsync();
+
+            foreach (var participant in activeParticipants)
+            {
+                // Instantly alert the Teacher's Dashboard (IMC)!
+                await Clients.Group(participant.RoomId.ToString()).SendAsync("StudentDisconnected", studentId);
+            }
         }
 
         await base.OnDisconnectedAsync(exception);
+    }
+
+    public async Task ReSyncState(int roomId, int studentId)
+    {
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+        if (!string.Equals(role, "Student", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdString == null) return;
+
+        int authenticatedStudentId = int.Parse(userIdString);
+        if (authenticatedStudentId != studentId) return;
+
+        var room = await _context.Rooms.FindAsync(roomId);
+        if (room == null)
+            return;
+
+        var isSessionEnded = !string.Equals(room.Status, "Active", StringComparison.OrdinalIgnoreCase);
+
+        var leaveAlreadyGranted = await _context.MonitoringEvents
+            .AnyAsync(e => e.RoomId == roomId
+                        && e.StudentId == studentId
+                        && e.EventType == "LEAVE_GRANTED");
+
+        if (isSessionEnded || leaveAlreadyGranted)
+        {
+            await Clients.Client(Context.ConnectionId).SendAsync("LeaveGranted", studentId);
+        }
     }
 
     /// <summary>
@@ -246,6 +278,18 @@ public class MonitoringHub : Hub
 
         if (!isParticipantInRoom)
             return;
+
+        var leaveGrantedEvent = new MonitoringEvent
+        {
+            RoomId = roomId,
+            StudentId = studentId,
+            EventType = "LEAVE_GRANTED",
+            SeverityScore = 0,
+            Timestamp = DateTime.UtcNow
+        };
+
+        _context.MonitoringEvents.Add(leaveGrantedEvent);
+        await _context.SaveChangesAsync();
 
         await Clients.User(studentId.ToString()).SendAsync("LeaveGranted", studentId);
         await Clients.Group(roomId.ToString()).SendAsync("LeaveApprovalUpdated", studentId, true);

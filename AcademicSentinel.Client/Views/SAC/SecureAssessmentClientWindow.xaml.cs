@@ -450,6 +450,29 @@ namespace AcademicSentinel.Client.Views.SAC
                     try
                     {
                         await _hubConnection.InvokeAsync("JoinLiveExam", _roomId);
+                        var reconnectedStudentId = SessionManager.CurrentUser?.Id ?? 0;
+                        if (reconnectedStudentId > 0)
+                            await _hubConnection.InvokeAsync("ReSyncState", _roomId, reconnectedStudentId);
+                        await Dispatcher.InvokeAsync(async () => await FlushPendingViolationsAsync());
+                    }
+                    catch
+                    {
+                    }
+                };
+
+                _hubConnection.Closed += async _ =>
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    if (_hubConnection == null)
+                        return;
+
+                    try
+                    {
+                        await _hubConnection.StartAsync();
+                        await _hubConnection.InvokeAsync("JoinLiveExam", _roomId);
+                        var recoveredStudentId = SessionManager.CurrentUser?.Id ?? 0;
+                        if (recoveredStudentId > 0)
+                            await _hubConnection.InvokeAsync("ReSyncState", _roomId, recoveredStudentId);
                         await Dispatcher.InvokeAsync(async () => await FlushPendingViolationsAsync());
                     }
                     catch
@@ -605,6 +628,12 @@ namespace AcademicSentinel.Client.Views.SAC
 
         private async void BtnRequestLeave_Click(object sender, RoutedEventArgs e)
         {
+            if (FindName("BtnRequestLeave") is Button leaveButton)
+            {
+                leaveButton.IsEnabled = false;
+                leaveButton.Content = "Waiting for Instructor...";
+            }
+
             if (_sessionEnded)
             {
                 _allowClose = true;
@@ -619,7 +648,10 @@ namespace AcademicSentinel.Client.Views.SAC
 
             int studentId = SessionManager.CurrentUser?.Id ?? 0;
             if (studentId <= 0)
+            {
+                UpdateRequestLeaveButtonState();
                 return;
+            }
 
             if (_leaveRequestState == LeaveRequestState.Locked)
             {
@@ -628,6 +660,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     if (_hubConnection == null || _hubConnection.State != HubConnectionState.Connected)
                     {
                         MessageBox.Show("Not connected to server.", "Request Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        UpdateRequestLeaveButtonState();
                         return;
                     }
 
@@ -638,6 +671,8 @@ namespace AcademicSentinel.Client.Views.SAC
                 catch (Exception ex)
                 {
                     MessageBox.Show($"Failed to request leave: {ex.Message}", "Request Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    if (_leaveRequestState != LeaveRequestState.Pending)
+                        UpdateRequestLeaveButtonState();
                 }
 
                 return;

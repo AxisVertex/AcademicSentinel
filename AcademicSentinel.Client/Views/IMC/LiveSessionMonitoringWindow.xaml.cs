@@ -376,6 +376,17 @@ namespace AcademicSentinel.Client.Views.IMC
 
             _hubConnection.On<int>("StudentDisconnected", (id) => Dispatcher.Invoke(() =>
             {
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == id);
+                if (targetStudent != null)
+                {
+                    targetStudent.Status = "Offline/Disconnected";
+                    targetStudent.StatusColor = "#D32F2F";
+                    targetStudent.IsLeaveRequested = false;
+                    _leaveRequestedStateByStudentId[id] = false;
+                    LogActivity(targetStudent.Email, "LEFT", "Student disconnected from session.", "#D32F2F");
+                    _studentsView.Refresh();
+                }
+
                 _ = LoadParticipantsFromServerAsync();
             }));
 
@@ -745,6 +756,14 @@ namespace AcademicSentinel.Client.Views.IMC
 
         protected override async void OnClosing(CancelEventArgs e)
         {
+            var isSessionActive = _currentSessionId > 0 && !_isSessionEnded;
+            if (isSessionActive)
+            {
+                e.Cancel = true;
+                MessageBox.Show("You must end the active session before closing this window.", "Active Session", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             if (!_isEndingFromTimer && _currentSessionId > 0 && _isMonitoringStarted)
             {
                 try
