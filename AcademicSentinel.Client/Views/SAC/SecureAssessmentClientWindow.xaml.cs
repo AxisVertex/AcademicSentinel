@@ -38,6 +38,15 @@ namespace AcademicSentinel.Client.Views.SAC
         private bool _detectorsInitialized;
         private bool _detectorsRunning;
         private SacDetectorRuntime _detectorRuntime;
+        private enum LeaveRequestState
+        {
+            Locked,
+            Pending,
+            Unlocked
+        }
+
+        private LeaveRequestState _leaveRequestState = LeaveRequestState.Locked;
+        private bool _allowClose;
         private readonly Queue<MonitoringEventDto> _pendingViolationQueue = new Queue<MonitoringEventDto>();
         private readonly Dictionary<string, DateTime> _lastViolationSentByType = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
@@ -85,6 +94,8 @@ namespace AcademicSentinel.Client.Views.SAC
             };
             _detectorPollTimer.Tick += (_, __) => PollDetectors();
             _detectorPollTimer.Start();
+
+            UpdateRequestLeaveButtonState();
 
             _ = LoadDetectionSettingsAsync();
             _ = InitializeSignalRAsync();
@@ -455,6 +466,19 @@ namespace AcademicSentinel.Client.Views.SAC
                     });
                 });
 
+                _hubConnection.On<int>("LeaveGranted", grantedStudentId =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        int currentStudentId = SessionManager.CurrentUser?.Id ?? 0;
+                        if (grantedStudentId != currentStudentId)
+                            return;
+
+                        _leaveRequestState = LeaveRequestState.Unlocked;
+                        UpdateRequestLeaveButtonState();
+                    });
+                });
+
                 _hubConnection.On<int, int>("MonitoringCountdownStarted", (delaySeconds, monitoringDurationSeconds) =>
                 {
                     Dispatcher.Invoke(() =>
@@ -546,16 +570,71 @@ namespace AcademicSentinel.Client.Views.SAC
             }
         }
 
-        private void BtnLeave_Click(object sender, RoutedEventArgs e)
+        private async void BtnRequestLeave_Click(object sender, RoutedEventArgs e)
         {
-            if (_isMonitoringActive)
+            int studentId = SessionManager.CurrentUser?.Id ?? 0;
+            if (studentId <= 0)
+                return;
+
+            if (_leaveRequestState == LeaveRequestState.Locked)
             {
+                try
+                {
+                    if (_hubConnection == null || _hubConnection.State != HubConnectionState.Connected)
+                    {
+                        MessageBox.Show("Not connected to server.", "Request Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    await _hubConnection.InvokeAsync("RequestLeave", _roomId, studentId);
+                    _leaveRequestState = LeaveRequestState.Pending;
+                    UpdateRequestLeaveButtonState();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to request leave: {ex.Message}", "Request Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+
                 return;
             }
 
-            if (MessageBox.Show("Leave this session and return to dashboard?", "Leave Session", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            if (_leaveRequestState == LeaveRequestState.Unlocked)
             {
+                _allowClose = true;
+                _detectorsRunning = false;
+                _detectorRuntime?.SetMonitoringEnabled(false);
+                _statusTimer?.Stop();
+                _compactCountdownTimer?.Stop();
+                _detectorPollTimer?.Stop();
                 ReturnToStudentDashboard();
+            }
+        }
+
+        private void UpdateRequestLeaveButtonState()
+        {
+            if (FindName("BtnRequestLeave") is not Button btn)
+                return;
+
+            switch (_leaveRequestState)
+            {
+                case LeaveRequestState.Locked:
+                    btn.Content = "Request Leave";
+                    btn.IsEnabled = true;
+                    btn.Background = new SolidColorBrush(Color.FromRgb(211, 47, 47));
+                    btn.Foreground = Brushes.White;
+                    break;
+                case LeaveRequestState.Pending:
+                    btn.Content = "Waiting for Instructor...";
+                    btn.IsEnabled = false;
+                    btn.Background = new SolidColorBrush(Color.FromRgb(158, 158, 158));
+                    btn.Foreground = Brushes.White;
+                    break;
+                case LeaveRequestState.Unlocked:
+                    btn.Content = "Leave Session";
+                    btn.IsEnabled = true;
+                    btn.Background = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                    btn.Foreground = Brushes.White;
+                    break;
             }
         }
 
@@ -687,7 +766,7 @@ namespace AcademicSentinel.Client.Views.SAC
                 headerExpand.Visibility = Visibility.Collapsed;
             if (FindName("SessionContentGrid") is FrameworkElement contentGrid)
                 contentGrid.Margin = new Thickness(30, 24, 30, 24);
-            if (FindName("BtnLeave") is System.Windows.Controls.Button leaveButton)
+            if (FindName("BtnRequestLeave") is System.Windows.Controls.Button leaveButton)
                 leaveButton.Visibility = Visibility.Visible;
             Left = (SystemParameters.WorkArea.Width - Width) / 2 + SystemParameters.WorkArea.Left;
             Top = (SystemParameters.WorkArea.Height - Height) / 2 + SystemParameters.WorkArea.Top;
@@ -723,7 +802,7 @@ namespace AcademicSentinel.Client.Views.SAC
 
             if (FindName("BtnHeaderExpand") is Button headerExpand)
                 headerExpand.Visibility = Visibility.Visible;
-            if (FindName("BtnLeave") is Button leaveButton)
+            if (FindName("BtnRequestLeave") is Button leaveButton)
                 leaveButton.Visibility = Visibility.Visible;
             if (FindName("SessionContentGrid") is FrameworkElement contentGrid)
                 contentGrid.Margin = new Thickness(8, 8, 8, 8);
@@ -739,6 +818,13 @@ namespace AcademicSentinel.Client.Views.SAC
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
+            if (!_allowClose && _leaveRequestState != LeaveRequestState.Unlocked)
+            {
+                e.Cancel = true;
+                WindowState = WindowState.Minimized;
+                return;
+            }
+
             _statusTimer?.Stop();
             _compactCountdownTimer?.Stop();
             _detectorPollTimer?.Stop();

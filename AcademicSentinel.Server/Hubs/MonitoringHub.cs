@@ -213,4 +213,28 @@ public class MonitoringHub : Hub
             timestamp = DateTime.UtcNow
         });
     }
+
+    public async Task RequestLeave(int roomId, int studentId)
+    {
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+        if (!string.Equals(role, "Student", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdString == null) return;
+
+        int authenticatedStudentId = int.Parse(userIdString);
+        if (authenticatedStudentId != studentId) return;
+
+        await Clients.Group(roomId.ToString()).SendAsync("LeaveRequested", studentId);
+    }
+
+    public async Task GrantLeave(int roomId, int studentId)
+    {
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+        if (!string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        await Clients.User(studentId.ToString()).SendAsync("LeaveGranted", studentId);
+    }
 }

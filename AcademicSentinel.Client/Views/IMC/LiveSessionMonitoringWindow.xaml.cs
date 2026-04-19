@@ -413,8 +413,43 @@ namespace AcademicSentinel.Client.Views.IMC
                 _studentsView.Refresh();
             }));
 
+            _hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
+            {
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (targetStudent == null) return;
+
+                targetStudent.IsLeaveRequested = true;
+                targetStudent.Status = "Wants to Leave";
+                targetStudent.StatusColor = "#FF9800";
+
+                LogActivity(targetStudent.Email, "LEAVE_REQ", "Student requested leave approval.", "#FF9800");
+                _studentsView.Refresh();
+            }));
+
             try { await _hubConnection.StartAsync(); await _hubConnection.InvokeAsync("JoinRoom", _roomId.ToString()); }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
+        }
+
+        private async void BtnApproveLeave_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.DataContext is not LiveStudentStatus student)
+                return;
+
+            try
+            {
+                await _hubConnection.InvokeAsync("GrantLeave", _roomId, student.StudentId);
+
+                student.IsLeaveRequested = false;
+                student.Status = "Unlock Granted";
+                student.StatusColor = "#1B5E20";
+
+                LogActivity(student.Email, "UNLOCK", "Instructor granted leave.", "#1B5E20");
+                _studentsView.Refresh();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to grant leave: {ex.Message}", "Grant Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
         private void LogActivity(string email, string badge, string msg, string color)
@@ -760,6 +795,7 @@ namespace AcademicSentinel.Client.Views.IMC
         public string Name { get; set; }
         private string _status, _statusColor;
         private int _violations;
+        private bool _isLeaveRequested;
         public string Email { get; set; }
         public string ProfileImageUrl { get; set; } = string.Empty;
         public Visibility HasProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Collapsed : Visibility.Visible;
@@ -767,6 +803,7 @@ namespace AcademicSentinel.Client.Views.IMC
         public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
         public string StatusColor { get => _statusColor; set { _statusColor = value; OnPropertyChanged(); } }
         public int ViolationCount { get => _violations; set { _violations = value; OnPropertyChanged(); } }
+        public bool IsLeaveRequested { get => _isLeaveRequested; set { _isLeaveRequested = value; OnPropertyChanged(); } }
         public bool HasViolation => ViolationCount > 0;
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));

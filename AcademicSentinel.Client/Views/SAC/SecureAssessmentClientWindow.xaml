@@ -48,31 +48,16 @@
                             Padding="10,6" FontSize="13" Cursor="Hand"
                             Content="□" Click="BtnExpandCompact_Click"/>
 
-                    <!-- Leave Button -->
-                    <Button x:Name="BtnLeave" Padding="16,8" FontSize="13"
-                            Cursor="Hand" Click="BtnLeave_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="leaveBorder" CornerRadius="8" Padding="16,8" Cursor="Hand">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="Transparent"/>
-                                            <Setter Property="BorderBrush" Value="#E0E0E0"/>
-                                            <Setter Property="BorderThickness" Value="1.5"/>
-                                        </Style>
-                                    </Border.Style>
-                                    <TextBlock x:Name="TxtLeaveBtn" Text="Leave" FontSize="13" Foreground="#616161"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="leaveBorder" Property="Background" Value="#FFEBEE"/>
-                                        <Setter TargetName="leaveBorder" Property="BorderBrush" Value="#FFCDD2"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
+                    <Button x:Name="BtnRequestLeave"
+                            Content="Request Leave"
+                            Padding="16,8"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Cursor="Hand"
+                            Background="#D32F2F"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Click="BtnRequestLeave_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
