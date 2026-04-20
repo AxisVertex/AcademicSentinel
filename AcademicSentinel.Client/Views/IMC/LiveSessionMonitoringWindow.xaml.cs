@@ -440,6 +440,19 @@ namespace AcademicSentinel.Client.Views.IMC
                 _studentsView.Refresh();
             }));
 
+            _hubConnection.On<int>("StudentSafelyLeft", studentId => Dispatcher.Invoke(() =>
+            {
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (targetStudent != null)
+                {
+                    LogActivity(targetStudent.Email, "LEFT", "Student left safely with instructor approval.", "#1B5E20");
+                    ActiveStudents.Remove(targetStudent);
+                    _leaveRequestedStateByStudentId[studentId] = false;
+                    _studentsView.Refresh();
+                    UpdateParticipantCount();
+                }
+            }));
+
             try { await _hubConnection.StartAsync(); await _hubConnection.InvokeAsync("JoinRoom", _roomId.ToString()); }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
         }

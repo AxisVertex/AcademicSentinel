@@ -80,6 +80,12 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
         public void StopMonitoring()
         {
             _isMonitoring = false;
+            _copyDown = false;
+            _pasteDown = false;
+            _temporarilyExemptWindow = IntPtr.Zero;
+            _lastReportedIdleLevel = 0;
+            _lastReportedProcesses.Clear();
+            _lastReportedAtByEvent.Clear();
         }
 
         public IReadOnlyList<MonitoringDetectionEvent> Poll(bool isSacWindowActive)

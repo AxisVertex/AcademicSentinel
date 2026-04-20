@@ -72,6 +72,15 @@ namespace AcademicSentinel.Client.Services.SAC
             _behavioralMonitoringService.StopMonitoring();
         }
 
+        public void StopMonitoring()
+        {
+            if (!_isStarted)
+                return;
+
+            _isStarted = false;
+            _behavioralMonitoringService.StopMonitoring();
+        }
+
         private static IReadOnlyList<DetectorFinding> MapFindings(IReadOnlyList<MonitoringDetectionEvent> events)
         {
             if (events == null || events.Count == 0)

@@ -289,9 +289,51 @@ public class MonitoringHub : Hub
         };
 
         _context.MonitoringEvents.Add(leaveGrantedEvent);
+
+        var participant = await _context.SessionParticipants
+            .Where(p => p.RoomId == roomId && p.StudentId == studentId)
+            .OrderByDescending(p => p.JoinedAt)
+            .FirstOrDefaultAsync();
+
+        if (participant != null)
+        {
+            participant.ConnectionStatus = "Finished";
+            participant.DisconnectedAt = DateTime.UtcNow;
+        }
+
         await _context.SaveChangesAsync();
 
         await Clients.User(studentId.ToString()).SendAsync("LeaveGranted", studentId);
+        await Clients.Group(roomId.ToString()).SendAsync("StudentSafelyLeft", studentId);
         await Clients.Group(roomId.ToString()).SendAsync("LeaveApprovalUpdated", studentId, true);
+    }
+
+    public async Task NotifyStudentLeftSafely(int roomId, int studentId)
+    {
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+        if (!string.Equals(role, "Student", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdString == null)
+            return;
+
+        int authenticatedStudentId = int.Parse(userIdString);
+        if (authenticatedStudentId != studentId)
+            return;
+
+        var participant = await _context.SessionParticipants
+            .Where(p => p.RoomId == roomId && p.StudentId == studentId)
+            .OrderByDescending(p => p.JoinedAt)
+            .FirstOrDefaultAsync();
+
+        if (participant != null)
+        {
+            participant.ConnectionStatus = "Finished";
+            participant.DisconnectedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        await Clients.Group(roomId.ToString()).SendAsync("StudentSafelyLeft", studentId);
     }
 }
