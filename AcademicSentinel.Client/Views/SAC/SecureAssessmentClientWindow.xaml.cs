@@ -55,6 +55,7 @@ namespace AcademicSentinel.Client.Views.SAC
         private ExamPhase _currentPhase = ExamPhase.PreSession;
         private LeaveRequestState _leaveRequestState = LeaveRequestState.Locked;
         private bool _allowClose;
+        private bool _isPermanentlyDone;
         private readonly Queue<MonitoringEventDto> _pendingViolationQueue = new Queue<MonitoringEventDto>();
         private readonly Dictionary<string, DateTime> _lastViolationSentByType = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
@@ -742,6 +743,7 @@ namespace AcademicSentinel.Client.Views.SAC
         private async Task LeaveSessionSafelyAsync(int studentId)
         {
             _allowClose = true;
+            _isPermanentlyDone = true;
             _detectorsRunning = false;
             _detectorRuntime?.StopMonitoring();
             _statusTimer?.Stop();
@@ -758,6 +760,11 @@ namespace AcademicSentinel.Client.Views.SAC
             catch
             {
                 // best-effort notify; do not block clean exit
+            }
+
+            if (_hubConnection != null)
+            {
+                try { await _hubConnection.StopAsync(); } catch { }
             }
 
             ReturnToStudentDashboard();
@@ -1004,7 +1011,7 @@ namespace AcademicSentinel.Client.Views.SAC
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
-            if (!_allowClose && _leaveRequestState != LeaveRequestState.Unlocked)
+            if (!_allowClose && !_isPermanentlyDone && _leaveRequestState != LeaveRequestState.Unlocked)
             {
                 e.Cancel = true;
                 WindowState = WindowState.Minimized;

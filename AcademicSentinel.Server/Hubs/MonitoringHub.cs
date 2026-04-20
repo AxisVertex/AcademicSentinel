@@ -148,6 +148,15 @@ public class MonitoringHub : Hub
         {
             int studentId = int.Parse(userIdString);
 
+            var hasCompletedSessionParticipant = await _context.SessionParticipants
+                .AnyAsync(p => p.StudentId == studentId && p.ConnectionStatus == "Completed");
+
+            if (hasCompletedSessionParticipant)
+            {
+                await base.OnDisconnectedAsync(exception);
+                return;
+            }
+
             // Find any active exam this student was in
             var activeParticipants = await _context.SessionParticipants
                 .Where(p => p.StudentId == studentId && p.ConnectionStatus == "Connected")
@@ -216,6 +225,15 @@ public class MonitoringHub : Hub
 
         // Security check: Students can only report their own events
         if (authenticatedStudentId != studentId) return;
+
+        var latestParticipantState = await _context.SessionParticipants
+            .Where(p => p.RoomId == roomId && p.StudentId == studentId)
+            .OrderByDescending(p => p.JoinedAt)
+            .Select(p => p.ConnectionStatus)
+            .FirstOrDefaultAsync();
+
+        if (string.Equals(latestParticipantState, "Completed", StringComparison.OrdinalIgnoreCase))
+            return;
 
         // Verify the room exists
         var room = await _context.Rooms.FindAsync(roomId);
@@ -297,7 +315,7 @@ public class MonitoringHub : Hub
 
         if (participant != null)
         {
-            participant.ConnectionStatus = "Finished";
+            participant.ConnectionStatus = "Completed";
             participant.DisconnectedAt = DateTime.UtcNow;
         }
 
@@ -329,7 +347,7 @@ public class MonitoringHub : Hub
 
         if (participant != null)
         {
-            participant.ConnectionStatus = "Finished";
+            participant.ConnectionStatus = "Completed";
             participant.DisconnectedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }

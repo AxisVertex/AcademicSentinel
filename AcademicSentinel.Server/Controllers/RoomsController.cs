@@ -294,7 +294,10 @@ public class RoomsController : ControllerBase
                 StudentName = user?.FullName ?? "No Name Set", // Sending the real name
                 ProfileImageUrl = user?.ProfileImageUrl,
                 EnrollmentSource = enrollment.EnrollmentSource,
-                ParticipationStatus = participationStatus,
+                ParticipationStatus = participantDictionary.TryGetValue(enrollment.StudentId, out var latestParticipantStatus)
+                    && string.Equals(latestParticipantStatus.ConnectionStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+                    ? "Completed"
+                    : participationStatus,
                 ConnectionStatus = participantDictionary.TryGetValue(enrollment.StudentId, out var latestParticipant)
                     ? latestParticipant.ConnectionStatus
                     : "Disconnected"
