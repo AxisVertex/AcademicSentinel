@@ -50,6 +50,9 @@ namespace AcademicSentinel.Client.Views.IMC
         private readonly Dictionary<int, bool> _leaveRequestedStateByStudentId = new();
         private readonly HashSet<int> _safelyLeftStudentIds = new();
         private readonly HashSet<int> _permanentlyDismissedStudents = new HashSet<int>();
+        private readonly HashSet<int> _studentsWithViolations = new HashSet<int>();
+        private readonly Dictionary<int, ObservableCollection<StudentMonitoringEvent>> _studentLogs = new();
+        private int? _selectedStudentId;
 
         public ObservableCollection<LiveStudentStatus> ActiveStudents { get; set; }
         public ObservableCollection<LogEntry> LogFeed { get; set; }
@@ -385,6 +388,11 @@ namespace AcademicSentinel.Client.Views.IMC
                 if (_safelyLeftStudentIds.Contains(id) || _permanentlyDismissedStudents.Contains(id))
                     return;
 
+                if (_selectedStudentId == id)
+                {
+                    CollapseDetailPanel();
+                }
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == id);
                 if (targetStudent == null)
                     return;
@@ -406,10 +414,14 @@ namespace AcademicSentinel.Client.Views.IMC
                 if (_permanentlyDismissedStudents.Contains(payload.StudentId))
                     return;
 
+                _studentsWithViolations.Add(payload.StudentId);
+                AppendStudentMonitoringEvent(payload.StudentId, payload.EventType, payload.SeverityScore);
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == payload.StudentId);
                 if (targetStudent != null)
                 {
                     targetStudent.ViolationCount += Math.Max(1, payload.SeverityScore);
+                    targetStudent.HasViolation = true;
                     targetStudent.Status = $"ALERT: {payload.EventType}";
                     targetStudent.StatusColor = "#D32F2F";
                 }
@@ -427,10 +439,14 @@ namespace AcademicSentinel.Client.Views.IMC
                 if (_permanentlyDismissedStudents.Contains(studentId))
                     return;
 
+                _studentsWithViolations.Add(studentId);
+                AppendStudentMonitoringEvent(studentId, eventType, severityScore);
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent != null)
                 {
                     targetStudent.ViolationCount += Math.Max(1, severityScore);
+                    targetStudent.HasViolation = true;
                     targetStudent.Status = $"ALERT: {eventType}";
                     targetStudent.StatusColor = "#D32F2F";
                 }
@@ -462,6 +478,12 @@ namespace AcademicSentinel.Client.Views.IMC
             {
                 _permanentlyDismissedStudents.Add(studentId);
                 _safelyLeftStudentIds.Add(studentId);
+
+                if (_selectedStudentId == studentId)
+                {
+                    CollapseDetailPanel();
+                }
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent != null)
                 {
@@ -550,6 +572,7 @@ namespace AcademicSentinel.Client.Views.IMC
                             : (p.ProfileImageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                                 ? p.ProfileImageUrl
                                 : $"{ApiEndpoints.BaseUrl}{p.ProfileImageUrl}"),
+                        HasViolation = _studentsWithViolations.Contains(p.StudentId),
                         IsLeaveRequested = isLeaveRequested,
                         Status = isLeaveRequested ? "Wants to Leave" : "Connected",
                         StatusColor = isLeaveRequested ? "#FF9800" : "#4CAF50"
@@ -650,6 +673,9 @@ namespace AcademicSentinel.Client.Views.IMC
             _selectedStudent = (sender as Border)?.DataContext as LiveStudentStatus;
             if (_selectedStudent != null)
             {
+                _selectedStudentId = _selectedStudent.StudentId;
+                RightDetailPanel.Visibility = Visibility.Visible;
+
                 TxtSelectedName.Text = _selectedStudent.Name;
                 TxtSelectedStatus.Text = _selectedStudent.Status.ToUpper();
                 SelectedStatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(_selectedStudent.StatusColor));
@@ -661,6 +687,40 @@ namespace AcademicSentinel.Client.Views.IMC
                 TxtLogHeader.Text = $"Logs: {_selectedStudent.Name}";
                 ApplyAllFilters();
             }
+        }
+
+        private void AppendStudentMonitoringEvent(int studentId, string eventType, int severityScore)
+        {
+            if (!_studentLogs.TryGetValue(studentId, out var logs))
+            {
+                logs = new ObservableCollection<StudentMonitoringEvent>();
+                _studentLogs[studentId] = logs;
+            }
+
+            logs.Insert(0, new StudentMonitoringEvent
+            {
+                EventType = eventType,
+                SeverityScore = severityScore
+            });
+        }
+
+        private void BtnCloseDetailPanel_Click(object sender, RoutedEventArgs e)
+        {
+            CollapseDetailPanel();
+        }
+
+        private void CollapseDetailPanel()
+        {
+            RightDetailPanel.Visibility = Visibility.Collapsed;
+            _selectedStudent = null;
+            _selectedStudentId = null;
+
+            TxtSelectedName.Text = "Select a Student";
+            TxtSelectedStatus.Text = "WAITING";
+            SelectedStatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9E9E9E"));
+            TxtAlertCount.Text = "0";
+            TxtRiskLevel.Text = "SAFE";
+            TxtRiskLevel.Foreground = Brushes.Green;
         }
 
         private void BtnRemoveFromSession_Click(object sender, RoutedEventArgs e)
@@ -862,15 +922,28 @@ namespace AcademicSentinel.Client.Views.IMC
         private string _status, _statusColor;
         private int _violations;
         private bool _isLeaveRequested;
+        private bool _hasViolation;
         public string Email { get; set; }
         public string ProfileImageUrl { get; set; } = string.Empty;
         public Visibility HasProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Collapsed : Visibility.Visible;
         public Visibility HasNoProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Visible : Visibility.Collapsed;
         public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
         public string StatusColor { get => _statusColor; set { _statusColor = value; OnPropertyChanged(); } }
-        public int ViolationCount { get => _violations; set { _violations = value; OnPropertyChanged(); } }
+        public int ViolationCount
+        {
+            get => _violations;
+            set
+            {
+                _violations = value;
+                OnPropertyChanged();
+                if (_violations > 0 && !HasViolation)
+                {
+                    HasViolation = true;
+                }
+            }
+        }
         public bool IsLeaveRequested { get => _isLeaveRequested; set { _isLeaveRequested = value; OnPropertyChanged(); } }
-        public bool HasViolation => ViolationCount > 0;
+        public bool HasViolation { get => _hasViolation; set { _hasViolation = value; OnPropertyChanged(); } }
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
@@ -895,6 +968,12 @@ namespace AcademicSentinel.Client.Views.IMC
     }
 
     public class LogEntry { public string Timestamp { get; set; } public string StudentEmail { get; set; } public string BadgeText { get; set; } public string BadgeColor { get; set; } public string Message { get; set; } }
+
+    public class StudentMonitoringEvent
+    {
+        public string EventType { get; set; } = string.Empty;
+        public int SeverityScore { get; set; }
+    }
 
     public class ViolationLogDto
     {

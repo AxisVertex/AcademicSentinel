@@ -219,7 +219,7 @@
                 <ColumnDefinition Width="16"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="16"/>
-                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="350"/>
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0">
@@ -401,10 +401,10 @@
                                                             Style="{StaticResource PrimaryBtn}"
                                                             FontSize="10"
                                                             Padding="8,4"
-                                                            Margin="6,0,0,0"
+                                                            Margin="6,0,36,0"
                                                             Visibility="{Binding IsLeaveRequested, Converter={StaticResource BoolToVis}}"
                                                             Click="BtnApproveLeave_Click"/>
-                                                    <materialDesign:PackIcon Grid.Column="2" Kind="AlertCircleOutline" Width="16" Height="16" Foreground="#E53935" VerticalAlignment="Center" Margin="0,0,6,0" Visibility="{Binding HasViolation, Converter={StaticResource BoolToVis}}"/>
+                                                    <materialDesign:PackIcon Grid.Column="2" Kind="AlertCircle" Width="16" Height="16" Foreground="#E53935" VerticalAlignment="Center" Margin="0,0,6,0" Visibility="{Binding HasViolation, Converter={StaticResource BoolToVis}}"/>
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
@@ -488,12 +488,31 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Column="4" Background="White" CornerRadius="12" Padding="20">
+            <Border x:Name="RightDetailPanel" Grid.Column="4" Background="White" CornerRadius="12" Padding="20" Visibility="Collapsed">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.05" Color="Black"/>
                 </Border.Effect>
                 <Grid x:Name="StudentDetailPanel">
                     <StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Student Details" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource FEUSubTextBrush}"/>
+                            <Button x:Name="BtnCloseDetailPanel"
+                                    Grid.Column="1"
+                                    Width="26"
+                                    Height="26"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    Click="BtnCloseDetailPanel_Click">
+                                <materialDesign:PackIcon Kind="Close" Width="16" Height="16" Foreground="{StaticResource FEUSubTextBrush}"/>
+                            </Button>
+                        </Grid>
+
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
