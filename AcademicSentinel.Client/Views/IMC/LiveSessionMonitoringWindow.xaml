@@ -547,7 +547,7 @@
                                 HorizontalAlignment="Stretch"
                                 Padding="0,10"
                                 Margin="0,0,0,10"
-                                Click="BtnViolations_Click"/>
+                                Click="BtnViewSummary_Click"/>
 
                         <Button Content="Remove from Session" Style="{StaticResource EndSessionBtn}" HorizontalAlignment="Stretch" Padding="0,12" Click="BtnRemoveFromSession_Click"/>
                     </StackPanel>

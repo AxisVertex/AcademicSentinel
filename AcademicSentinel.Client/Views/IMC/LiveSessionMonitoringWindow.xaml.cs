@@ -19,6 +19,7 @@ using System.Windows.Threading; // NEW: Required for the Live Timer
 using System.Collections.Generic;
 using MaterialDesignThemes.Wpf;
 using AcademicSentinel.Client.Models;
+using AcademicSentinel.Client.Views.IMC.Dialogs;
 
 namespace AcademicSentinel.Client.Views.IMC
 {
@@ -801,6 +802,38 @@ namespace AcademicSentinel.Client.Views.IMC
             {
                 MessageBox.Show($"Failed to load violations: {ex.Message}", "Violations", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void BtnViewSummary_Click(object sender, RoutedEventArgs e)
+        {
+            if (EnsureSessionNotEnded()) return;
+            if (_selectedStudent == null)
+            {
+                MessageBox.Show("Select a participant first.", "Violation Summary", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => BtnViewSummary_Click(sender, e));
+                return;
+            }
+
+            var studentId = _selectedStudent.StudentId;
+            var studentName = string.IsNullOrWhiteSpace(_selectedStudent.Name) ? _selectedStudent.Email : _selectedStudent.Name;
+
+            var specificLogs = _studentLogs.TryGetValue(studentId, out var logs)
+                ? logs.ToList()
+                : new List<StudentMonitoringEvent>();
+
+            var totalRiskScore = specificLogs.Sum(x => Math.Max(0, x.SeverityScore));
+
+            var summaryDialog = new StudentViolationSummaryDialog(studentName, totalRiskScore, specificLogs)
+            {
+                Owner = this
+            };
+
+            summaryDialog.ShowDialog();
         }
 
         private static string BuildRuleSummary(string label, List<ViolationLogDto> logs, string[] tags)
