@@ -11,6 +11,7 @@ namespace AcademicSentinel.Client.Services.SAC
         private readonly DetectorRuntimeOptions _options;
         private readonly BehavioralMonitoringService _behavioralMonitoringService;
         private bool _isStarted;
+        public bool IsLoggingEnabled { get; private set; } = true;
 
         public SacDetectorRuntime(DetectorRuntimeOptions options)
         {
@@ -61,6 +62,7 @@ namespace AcademicSentinel.Client.Services.SAC
                     return;
 
                 _isStarted = true;
+                IsLoggingEnabled = true;
                 _behavioralMonitoringService.StartMonitoring();
                 return;
             }
@@ -69,16 +71,20 @@ namespace AcademicSentinel.Client.Services.SAC
                 return;
 
             _isStarted = false;
+            IsLoggingEnabled = false;
             _behavioralMonitoringService.StopMonitoring();
         }
 
-        public void StopMonitoring()
+        public async Task StopMonitoringAsync()
         {
+            IsLoggingEnabled = false;
+
             if (!_isStarted)
                 return;
 
             _isStarted = false;
             _behavioralMonitoringService.StopMonitoring();
+            await Task.CompletedTask;
         }
 
         private static IReadOnlyList<DetectorFinding> MapFindings(IReadOnlyList<MonitoringDetectionEvent> events)

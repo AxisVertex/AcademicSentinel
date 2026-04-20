@@ -267,6 +267,11 @@ public class RoomsController : ControllerBase
         var room = await _context.Rooms.FindAsync(roomId);
         if (room == null) return NotFound("Room not found.");
 
+        var activeSession = await _context.ExamSessions
+            .Where(s => s.RoomId == roomId && s.Status == "Active")
+            .OrderByDescending(s => s.StartTime)
+            .FirstOrDefaultAsync();
+
         var enrollments = await _context.RoomEnrollments.Where(e => e.RoomId == roomId).ToListAsync();
         var studentIds = enrollments.Select(e => e.StudentId).ToList();
 
@@ -275,17 +280,44 @@ public class RoomsController : ControllerBase
             .Where(u => studentIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => new { u.Email, u.FullName, u.ProfileImageUrl });
 
-        var participants = await _context.SessionParticipants.Where(p => p.RoomId == roomId).ToListAsync();
+        var participantsQuery = _context.SessionParticipants.Where(p => p.RoomId == roomId);
+        if (activeSession != null)
+        {
+            participantsQuery = participantsQuery.Where(p => p.JoinedAt >= activeSession.StartTime);
+        }
+        else
+        {
+            // No active session means nobody should appear as currently in-session.
+            participantsQuery = participantsQuery.Where(p => false);
+        }
+
+        var participants = await participantsQuery.ToListAsync();
         var participantDictionary = participants
             .GroupBy(p => p.StudentId)
             .Select(g => g.OrderByDescending(p => p.JoinedAt).First())
             .ToDictionary(p => p.StudentId);
 
+        var leaveGrantedStudentIds = await _context.MonitoringEvents
+            .Where(e => e.RoomId == roomId && e.EventType == "LEAVE_GRANTED")
+            .Select(e => e.StudentId)
+            .Distinct()
+            .ToHashSetAsync();
+
         var result = enrollments.Select(enrollment => {
             string participationStatus = "NotJoined";
-            if (participantDictionary.TryGetValue(enrollment.StudentId, out var p)) participationStatus = "Joined";
+            if (participantDictionary.TryGetValue(enrollment.StudentId, out var p))
+            {
+                participationStatus = string.Equals(p.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase)
+                    ? "Disconnected"
+                    : "Joined";
+            }
 
             users.TryGetValue(enrollment.StudentId, out var user);
+
+            var isCompletedParticipant = participantDictionary.TryGetValue(enrollment.StudentId, out var latestParticipantStatus)
+                && (string.Equals(latestParticipantStatus.ConnectionStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+                    || (string.Equals(latestParticipantStatus.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase)
+                        && leaveGrantedStudentIds.Contains(enrollment.StudentId)));
 
             return new ParticipantDto
             {
@@ -294,8 +326,7 @@ public class RoomsController : ControllerBase
                 StudentName = user?.FullName ?? "No Name Set", // Sending the real name
                 ProfileImageUrl = user?.ProfileImageUrl,
                 EnrollmentSource = enrollment.EnrollmentSource,
-                ParticipationStatus = participantDictionary.TryGetValue(enrollment.StudentId, out var latestParticipantStatus)
-                    && string.Equals(latestParticipantStatus.ConnectionStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+                ParticipationStatus = isCompletedParticipant
                     ? "Completed"
                     : participationStatus,
                 ConnectionStatus = participantDictionary.TryGetValue(enrollment.StudentId, out var latestParticipant)

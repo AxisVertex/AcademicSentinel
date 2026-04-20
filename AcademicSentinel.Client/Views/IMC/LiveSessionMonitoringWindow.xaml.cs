@@ -49,6 +49,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private List<ParticipantDto> _allParticipants = new List<ParticipantDto>();
         private readonly Dictionary<int, bool> _leaveRequestedStateByStudentId = new();
         private readonly HashSet<int> _safelyLeftStudentIds = new();
+        private readonly HashSet<int> _permanentlyDismissedStudents = new HashSet<int>();
 
         public ObservableCollection<LiveStudentStatus> ActiveStudents { get; set; }
         public ObservableCollection<LogEntry> LogFeed { get; set; }
@@ -372,13 +373,16 @@ namespace AcademicSentinel.Client.Views.IMC
                 .WithAutomaticReconnect().Build();
 
             _hubConnection.On<int>("StudentJoined", (id) => Dispatcher.Invoke(() => {
+                if (_permanentlyDismissedStudents.Contains(id))
+                    return;
+
                 _safelyLeftStudentIds.Remove(id);
                 _ = LoadParticipantsFromServerAsync();
             }));
 
             _hubConnection.On<int>("StudentDisconnected", (id) => Dispatcher.Invoke(() =>
             {
-                if (_safelyLeftStudentIds.Contains(id))
+                if (_safelyLeftStudentIds.Contains(id) || _permanentlyDismissedStudents.Contains(id))
                     return;
 
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == id);
@@ -399,6 +403,9 @@ namespace AcademicSentinel.Client.Views.IMC
             {
                 if (payload == null) return;
 
+                if (_permanentlyDismissedStudents.Contains(payload.StudentId))
+                    return;
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == payload.StudentId);
                 if (targetStudent != null)
                 {
@@ -417,6 +424,9 @@ namespace AcademicSentinel.Client.Views.IMC
 
             _hubConnection.On<int, string, int, DateTime>("ViolationDetected", (studentId, eventType, severityScore, timestamp) => Dispatcher.Invoke(() =>
             {
+                if (_permanentlyDismissedStudents.Contains(studentId))
+                    return;
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent != null)
                 {
@@ -432,6 +442,9 @@ namespace AcademicSentinel.Client.Views.IMC
 
             _hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
             {
+                if (_permanentlyDismissedStudents.Contains(studentId))
+                    return;
+
                 _leaveRequestedStateByStudentId[studentId] = true;
 
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
@@ -447,6 +460,7 @@ namespace AcademicSentinel.Client.Views.IMC
 
             _hubConnection.On<int>("StudentSafelyLeft", studentId => Dispatcher.Invoke(() =>
             {
+                _permanentlyDismissedStudents.Add(studentId);
                 _safelyLeftStudentIds.Add(studentId);
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent != null)
@@ -472,6 +486,7 @@ namespace AcademicSentinel.Client.Views.IMC
             {
                 await _hubConnection.InvokeAsync("GrantLeave", _roomId, student.StudentId);
 
+                _permanentlyDismissedStudents.Add(student.StudentId);
                 _leaveRequestedStateByStudentId[student.StudentId] = false;
                 student.IsLeaveRequested = false;
                 student.Status = "Approved to Leave";
@@ -516,11 +531,14 @@ namespace AcademicSentinel.Client.Views.IMC
                 ActiveStudents.Clear();
 
                 foreach (var p in participants.Where(p =>
-                    string.Equals(p.ConnectionStatus, "Connected", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(p.ConnectionStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+                    (string.Equals(p.ParticipationStatus, "Joined", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(p.ParticipationStatus, "Disconnected", StringComparison.OrdinalIgnoreCase))
                     && !string.Equals(p.ParticipationStatus, "Completed", StringComparison.OrdinalIgnoreCase)
                     && !_safelyLeftStudentIds.Contains(p.StudentId)))
                 {
+                    if (_permanentlyDismissedStudents.Contains(p.StudentId))
+                        continue;
+
                     var isLeaveRequested = _leaveRequestedStateByStudentId.TryGetValue(p.StudentId, out var requested) && requested;
                     ActiveStudents.Add(new LiveStudentStatus
                     {

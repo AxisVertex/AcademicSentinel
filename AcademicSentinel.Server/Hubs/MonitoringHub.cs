@@ -109,16 +109,26 @@ public class MonitoringHub : Hub
             return;
         }
 
+        var activeSession = await _context.ExamSessions
+            .Where(s => s.RoomId == roomId && s.Status == "Active")
+            .OrderByDescending(s => s.StartTime)
+            .FirstOrDefaultAsync();
+
         // 2. Add connection to the SignalR Room Group
         await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
 
         // 3. Update Database: Mark as officially "Participating" and "Connected"
         var participant = await _context.SessionParticipants
-            .FirstOrDefaultAsync(p => p.RoomId == roomId && p.StudentId == studentId);
+            .Where(p => p.RoomId == roomId && p.StudentId == studentId)
+            .OrderByDescending(p => p.JoinedAt)
+            .FirstOrDefaultAsync();
 
-        if (participant == null)
+        bool shouldCreateNewParticipant = participant == null
+            || (activeSession != null && participant.JoinedAt < activeSession.StartTime);
+
+        if (shouldCreateNewParticipant)
         {
-            // First time joining the live session
+            // First join for the current active session
             participant = new SessionParticipant
             {
                 RoomId = roomId,
@@ -132,6 +142,7 @@ public class MonitoringHub : Hub
         {
             // Reconnecting after a drop
             participant.ConnectionStatus = "Connected";
+            participant.JoinedAt = DateTime.UtcNow;
             participant.DisconnectedAt = null;
         }
         await _context.SaveChangesAsync();
@@ -315,7 +326,7 @@ public class MonitoringHub : Hub
 
         if (participant != null)
         {
-            participant.ConnectionStatus = "Completed";
+            participant.ConnectionStatus = "Disconnected";
             participant.DisconnectedAt = DateTime.UtcNow;
         }
 

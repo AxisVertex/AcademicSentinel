@@ -367,6 +367,9 @@ namespace AcademicSentinel.Client.Views.SAC
         {
             try
             {
+                if (!_detectorRuntime?.IsLoggingEnabled ?? true)
+                    return;
+
                 if (!_detectorsRunning || !_isMonitoringActive || _sessionEnded || _monitoringCountdownEndsAt.HasValue)
                     return;
 
@@ -517,12 +520,18 @@ namespace AcademicSentinel.Client.Views.SAC
 
                 _hubConnection.On<int>("LeaveGranted", grantedStudentId =>
                 {
-                    Dispatcher.Invoke(() =>
+                    Dispatcher.Invoke(async () =>
                     {
                         int currentStudentId = SessionManager.CurrentUser?.Id ?? 0;
                         if (grantedStudentId != currentStudentId)
                             return;
 
+                        if (_detectorRuntime != null)
+                        {
+                            await _detectorRuntime.StopMonitoringAsync();
+                        }
+
+                        await ForceStopSignalRAsync();
                         StopMonitoringForApprovedLeave();
                         _leaveRequestState = LeaveRequestState.Unlocked;
                         TxtMonitoringStatus.Text = "Permission Granted - Leave Now";
@@ -646,7 +655,7 @@ namespace AcademicSentinel.Client.Views.SAC
             _monitoringStartedAt = null;
             _isMonitoringActive = false;
             _detectorsRunning = false;
-            _detectorRuntime?.StopMonitoring();
+            _ = _detectorRuntime?.StopMonitoringAsync();
             _pendingViolationQueue.Clear();
             _lastViolationSentByType.Clear();
 
@@ -664,6 +673,26 @@ namespace AcademicSentinel.Client.Views.SAC
 
             if (FindName("TxtFullCountdown") is TextBlock fullCountdown)
                 fullCountdown.Text = string.Empty;
+        }
+
+        private async Task ForceStopSignalRAsync()
+        {
+            var connection = _hubConnection;
+            if (connection == null)
+                return;
+
+            try
+            {
+                await connection.StopAsync();
+            }
+            catch
+            {
+            }
+            finally
+            {
+                _hubConnection = null;
+                _pendingViolationQueue.Clear();
+            }
         }
 
         private async void BtnRequestLeave_Click(object sender, RoutedEventArgs e)
@@ -745,7 +774,10 @@ namespace AcademicSentinel.Client.Views.SAC
             _allowClose = true;
             _isPermanentlyDone = true;
             _detectorsRunning = false;
-            _detectorRuntime?.StopMonitoring();
+            if (_detectorRuntime != null)
+            {
+                await _detectorRuntime.StopMonitoringAsync();
+            }
             _statusTimer?.Stop();
             _compactCountdownTimer?.Stop();
             _detectorPollTimer?.Stop();
@@ -762,10 +794,7 @@ namespace AcademicSentinel.Client.Views.SAC
                 // best-effort notify; do not block clean exit
             }
 
-            if (_hubConnection != null)
-            {
-                try { await _hubConnection.StopAsync(); } catch { }
-            }
+            await ForceStopSignalRAsync();
 
             ReturnToStudentDashboard();
         }
