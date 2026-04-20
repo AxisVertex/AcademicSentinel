@@ -388,8 +388,22 @@
                                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                                         <TextBlock Text="{Binding Email}" FontSize="10" Foreground="{StaticResource FEUSubTextBrush}" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="WANTS TO LEAVE"
+                                                                   FontSize="9"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="#E65100"
+                                                                   Visibility="{Binding IsLeaveRequested, Converter={StaticResource BoolToVis}}"/>
                                                         <TextBlock Text="{Binding Status}" FontSize="10" Foreground="{Binding StatusColor}"/>
                                                     </StackPanel>
+                                                    <Button x:Name="BtnApproveLeave"
+                                                            Grid.Column="3"
+                                                            Content="Approve Leave"
+                                                            Style="{StaticResource PrimaryBtn}"
+                                                            FontSize="10"
+                                                            Padding="8,4"
+                                                            Margin="6,0,0,0"
+                                                            Visibility="{Binding IsLeaveRequested, Converter={StaticResource BoolToVis}}"
+                                                            Click="BtnApproveLeave_Click"/>
                                                     <materialDesign:PackIcon Grid.Column="2" Kind="AlertCircleOutline" Width="16" Height="16" Foreground="#E53935" VerticalAlignment="Center" Margin="0,0,6,0" Visibility="{Binding HasViolation, Converter={StaticResource BoolToVis}}"/>
                                                 </Grid>
                                             </Border>

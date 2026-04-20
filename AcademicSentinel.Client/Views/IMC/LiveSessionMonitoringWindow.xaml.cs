@@ -47,6 +47,9 @@ namespace AcademicSentinel.Client.Views.IMC
         private ICollectionView _logsView;
         private LiveStudentStatus _selectedStudent;
         private List<ParticipantDto> _allParticipants = new List<ParticipantDto>();
+        private readonly Dictionary<int, bool> _leaveRequestedStateByStudentId = new();
+        private readonly HashSet<int> _safelyLeftStudentIds = new();
+        private readonly HashSet<int> _permanentlyDismissedStudents = new HashSet<int>();
 
         public ObservableCollection<LiveStudentStatus> ActiveStudents { get; set; }
         public ObservableCollection<LogEntry> LogFeed { get; set; }
@@ -370,17 +373,38 @@ namespace AcademicSentinel.Client.Views.IMC
                 .WithAutomaticReconnect().Build();
 
             _hubConnection.On<int>("StudentJoined", (id) => Dispatcher.Invoke(() => {
+                if (_permanentlyDismissedStudents.Contains(id))
+                    return;
+
+                _safelyLeftStudentIds.Remove(id);
                 _ = LoadParticipantsFromServerAsync();
             }));
 
             _hubConnection.On<int>("StudentDisconnected", (id) => Dispatcher.Invoke(() =>
             {
+                if (_safelyLeftStudentIds.Contains(id) || _permanentlyDismissedStudents.Contains(id))
+                    return;
+
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == id);
+                if (targetStudent == null)
+                    return;
+
+                targetStudent.Status = "Offline/Disconnected";
+                targetStudent.StatusColor = "#D32F2F";
+                targetStudent.IsLeaveRequested = false;
+                _leaveRequestedStateByStudentId[id] = false;
+                LogActivity(targetStudent.Email, "LEFT", "Student disconnected from session.", "#D32F2F");
+                _studentsView.Refresh();
+
                 _ = LoadParticipantsFromServerAsync();
             }));
 
             _hubConnection.On<ViolationAlertPayload>("ViolationDetected", payload => Dispatcher.Invoke(() =>
             {
                 if (payload == null) return;
+
+                if (_permanentlyDismissedStudents.Contains(payload.StudentId))
+                    return;
 
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == payload.StudentId);
                 if (targetStudent != null)
@@ -400,6 +424,9 @@ namespace AcademicSentinel.Client.Views.IMC
 
             _hubConnection.On<int, string, int, DateTime>("ViolationDetected", (studentId, eventType, severityScore, timestamp) => Dispatcher.Invoke(() =>
             {
+                if (_permanentlyDismissedStudents.Contains(studentId))
+                    return;
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent != null)
                 {
@@ -413,8 +440,65 @@ namespace AcademicSentinel.Client.Views.IMC
                 _studentsView.Refresh();
             }));
 
+            _hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
+            {
+                if (_permanentlyDismissedStudents.Contains(studentId))
+                    return;
+
+                _leaveRequestedStateByStudentId[studentId] = true;
+
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (targetStudent == null) return;
+
+                targetStudent.IsLeaveRequested = true;
+                targetStudent.Status = "Wants to Leave";
+                targetStudent.StatusColor = "#FF9800";
+
+                LogActivity(targetStudent.Email, "LEAVE_REQ", "Student requested leave approval.", "#FF9800");
+                _studentsView.Refresh();
+            }));
+
+            _hubConnection.On<int>("StudentSafelyLeft", studentId => Dispatcher.Invoke(() =>
+            {
+                _permanentlyDismissedStudents.Add(studentId);
+                _safelyLeftStudentIds.Add(studentId);
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (targetStudent != null)
+                {
+                    LogActivity(targetStudent.Email, "LEFT", "Student left safely with instructor approval.", "#1B5E20");
+                    ActiveStudents.Remove(targetStudent);
+                    _leaveRequestedStateByStudentId[studentId] = false;
+                    _studentsView.Refresh();
+                    UpdateParticipantCount();
+                }
+            }));
+
             try { await _hubConnection.StartAsync(); await _hubConnection.InvokeAsync("JoinRoom", _roomId.ToString()); }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
+        }
+
+        private async void BtnApproveLeave_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.DataContext is not LiveStudentStatus student)
+                return;
+
+            try
+            {
+                await _hubConnection.InvokeAsync("GrantLeave", _roomId, student.StudentId);
+
+                _permanentlyDismissedStudents.Add(student.StudentId);
+                _leaveRequestedStateByStudentId[student.StudentId] = false;
+                student.IsLeaveRequested = false;
+                student.Status = "Approved to Leave";
+                student.StatusColor = "#1B5E20";
+
+                LogActivity(student.Email, "UNLOCK", "Instructor granted leave.", "#1B5E20");
+                _studentsView.Refresh();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to grant leave: {ex.Message}", "Grant Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
         private void LogActivity(string email, string badge, string msg, string color)
@@ -446,8 +530,16 @@ namespace AcademicSentinel.Client.Views.IMC
 
                 ActiveStudents.Clear();
 
-                foreach (var p in participants.Where(p => string.Equals(p.ConnectionStatus, "Connected", StringComparison.OrdinalIgnoreCase)))
+                foreach (var p in participants.Where(p =>
+                    (string.Equals(p.ParticipationStatus, "Joined", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(p.ParticipationStatus, "Disconnected", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(p.ParticipationStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+                    && !_safelyLeftStudentIds.Contains(p.StudentId)))
                 {
+                    if (_permanentlyDismissedStudents.Contains(p.StudentId))
+                        continue;
+
+                    var isLeaveRequested = _leaveRequestedStateByStudentId.TryGetValue(p.StudentId, out var requested) && requested;
                     ActiveStudents.Add(new LiveStudentStatus
                     {
                         StudentId = p.StudentId,
@@ -458,8 +550,9 @@ namespace AcademicSentinel.Client.Views.IMC
                             : (p.ProfileImageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                                 ? p.ProfileImageUrl
                                 : $"{ApiEndpoints.BaseUrl}{p.ProfileImageUrl}"),
-                        Status = "Connected",
-                        StatusColor = "#4CAF50"
+                        IsLeaveRequested = isLeaveRequested,
+                        Status = isLeaveRequested ? "Wants to Leave" : "Connected",
+                        StatusColor = isLeaveRequested ? "#FF9800" : "#4CAF50"
                     });
                 }
 
@@ -704,6 +797,14 @@ namespace AcademicSentinel.Client.Views.IMC
 
         protected override async void OnClosing(CancelEventArgs e)
         {
+            var isSessionActive = _currentSessionId > 0 && !_isSessionEnded;
+            if (isSessionActive)
+            {
+                e.Cancel = true;
+                MessageBox.Show("You must end the active session before closing this window.", "Active Session", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             if (!_isEndingFromTimer && _currentSessionId > 0 && _isMonitoringStarted)
             {
                 try
@@ -760,6 +861,7 @@ namespace AcademicSentinel.Client.Views.IMC
         public string Name { get; set; }
         private string _status, _statusColor;
         private int _violations;
+        private bool _isLeaveRequested;
         public string Email { get; set; }
         public string ProfileImageUrl { get; set; } = string.Empty;
         public Visibility HasProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Collapsed : Visibility.Visible;
@@ -767,6 +869,7 @@ namespace AcademicSentinel.Client.Views.IMC
         public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
         public string StatusColor { get => _statusColor; set { _statusColor = value; OnPropertyChanged(); } }
         public int ViolationCount { get => _violations; set { _violations = value; OnPropertyChanged(); } }
+        public bool IsLeaveRequested { get => _isLeaveRequested; set { _isLeaveRequested = value; OnPropertyChanged(); } }
         public bool HasViolation => ViolationCount > 0;
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));

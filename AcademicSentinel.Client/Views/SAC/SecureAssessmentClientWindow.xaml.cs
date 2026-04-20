@@ -38,6 +38,24 @@ namespace AcademicSentinel.Client.Views.SAC
         private bool _detectorsInitialized;
         private bool _detectorsRunning;
         private SacDetectorRuntime _detectorRuntime;
+        private enum ExamPhase
+        {
+            PreSession,
+            Countdown,
+            Active
+        }
+
+        private enum LeaveRequestState
+        {
+            Locked,
+            Pending,
+            Unlocked
+        }
+
+        private ExamPhase _currentPhase = ExamPhase.PreSession;
+        private LeaveRequestState _leaveRequestState = LeaveRequestState.Locked;
+        private bool _allowClose;
+        private bool _isPermanentlyDone;
         private readonly Queue<MonitoringEventDto> _pendingViolationQueue = new Queue<MonitoringEventDto>();
         private readonly Dictionary<string, DateTime> _lastViolationSentByType = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
@@ -85,6 +103,8 @@ namespace AcademicSentinel.Client.Views.SAC
             };
             _detectorPollTimer.Tick += (_, __) => PollDetectors();
             _detectorPollTimer.Start();
+
+            UpdateRequestLeaveButtonState();
 
             _ = LoadDetectionSettingsAsync();
             _ = InitializeSignalRAsync();
@@ -197,6 +217,7 @@ namespace AcademicSentinel.Client.Views.SAC
 
             if (isActive)
             {
+                _currentPhase = ExamPhase.Active;
                 MonitorDotBrush.Color = System.Windows.Media.Color.FromRgb(211, 47, 47);
                 TxtMonitoringStatus.Text = "Monitoring Active - You cannot leave during the session";
                 TxtMonitoringStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(198, 40, 40));
@@ -213,6 +234,7 @@ namespace AcademicSentinel.Client.Views.SAC
             {
                 if (_sessionEnded)
                 {
+                    _currentPhase = ExamPhase.PreSession;
                     MonitorDotBrush.Color = System.Windows.Media.Color.FromRgb(97, 97, 97);
                     TxtMonitoringStatus.Text = "Session Ended - You may now leave the session";
                     TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97));
@@ -222,6 +244,7 @@ namespace AcademicSentinel.Client.Views.SAC
                 }
                 else
                 {
+                    _currentPhase = ExamPhase.PreSession;
                     MonitorDotBrush.Color = System.Windows.Media.Color.FromRgb(76, 175, 80);
                     TxtMonitoringStatus.Text = "Waiting for monitoring to start - You may leave for now";
                     TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50));
@@ -239,6 +262,7 @@ namespace AcademicSentinel.Client.Views.SAC
             UpdateCompactCountdown();
             UpdateHeaderSessionClock();
             UpdateDetectorRuntimeState();
+            UpdateRequestLeaveButtonState();
         }
 
         private async Task RefreshMonitoringStateAsync()
@@ -343,6 +367,9 @@ namespace AcademicSentinel.Client.Views.SAC
         {
             try
             {
+                if (!_detectorRuntime?.IsLoggingEnabled ?? true)
+                    return;
+
                 if (!_detectorsRunning || !_isMonitoringActive || _sessionEnded || _monitoringCountdownEndsAt.HasValue)
                     return;
 
@@ -438,6 +465,42 @@ namespace AcademicSentinel.Client.Views.SAC
                     try
                     {
                         await _hubConnection.InvokeAsync("JoinLiveExam", _roomId);
+                        var reconnectedStudentId = SessionManager.CurrentUser?.Id ?? 0;
+                        if (reconnectedStudentId > 0)
+                            await _hubConnection.InvokeAsync("ReSyncState", _roomId, reconnectedStudentId);
+                        await Dispatcher.InvokeAsync(async () => await FlushPendingViolationsAsync());
+                    }
+                    catch
+                    {
+                    }
+                };
+
+                _hubConnection.On("SessionStarted", () =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (_sessionEnded)
+                            return;
+
+                        _currentPhase = ExamPhase.Countdown;
+                        _leaveRequestState = LeaveRequestState.Locked;
+                        UpdateRequestLeaveButtonState();
+                    });
+                });
+
+                _hubConnection.Closed += async _ =>
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    if (_hubConnection == null)
+                        return;
+
+                    try
+                    {
+                        await _hubConnection.StartAsync();
+                        await _hubConnection.InvokeAsync("JoinLiveExam", _roomId);
+                        var recoveredStudentId = SessionManager.CurrentUser?.Id ?? 0;
+                        if (recoveredStudentId > 0)
+                            await _hubConnection.InvokeAsync("ReSyncState", _roomId, recoveredStudentId);
                         await Dispatcher.InvokeAsync(async () => await FlushPendingViolationsAsync());
                     }
                     catch
@@ -455,10 +518,48 @@ namespace AcademicSentinel.Client.Views.SAC
                     });
                 });
 
+                _hubConnection.On<int>("LeaveGranted", grantedStudentId =>
+                {
+                    Dispatcher.Invoke(async () =>
+                    {
+                        int currentStudentId = SessionManager.CurrentUser?.Id ?? 0;
+                        if (grantedStudentId != currentStudentId)
+                            return;
+
+                        if (_detectorRuntime != null)
+                        {
+                            await _detectorRuntime.StopMonitoringAsync();
+                        }
+
+                        await ForceStopSignalRAsync();
+                        StopMonitoringForApprovedLeave();
+                        _leaveRequestState = LeaveRequestState.Unlocked;
+                        TxtMonitoringStatus.Text = "Permission Granted - Leave Now";
+                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                        if (FindName("TxtCompactLeavePermission") is TextBlock leavePerm)
+                        {
+                            leavePerm.Text = "Permission Granted - Leave Now";
+                            leavePerm.Foreground = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                        }
+
+                        if (FindName("BtnRequestLeave") is Button leaveButton)
+                        {
+                            leaveButton.Content = "Permission Granted - Leave Now";
+                            leaveButton.IsEnabled = true;
+                            leaveButton.Background = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                            leaveButton.Foreground = Brushes.White;
+                        }
+
+                        UpdateRequestLeaveButtonState();
+                    });
+                });
+
                 _hubConnection.On<int, int>("MonitoringCountdownStarted", (delaySeconds, monitoringDurationSeconds) =>
                 {
                     Dispatcher.Invoke(() =>
                     {
+                        _currentPhase = ExamPhase.Countdown;
+                        _leaveRequestState = LeaveRequestState.Locked;
                         _monitoringCountdownEndsAt = DateTime.Now.AddSeconds(Math.Max(0, delaySeconds));
                         _timerEnabled = monitoringDurationSeconds > 0;
                         _currentMonitoringDuration = _timerEnabled ? TimeSpan.FromSeconds(monitoringDurationSeconds) : TimeSpan.Zero;
@@ -486,6 +587,7 @@ namespace AcademicSentinel.Client.Views.SAC
                         }
                         UpdateDetectorRuntimeState();
                         UpdateCompactCountdown();
+                        UpdateRequestLeaveButtonState();
                     });
                 });
 
@@ -530,6 +632,7 @@ namespace AcademicSentinel.Client.Views.SAC
                         _ = _hubConnection?.StopAsync();
                         _hubConnection = null;
                         UpdateDetectorRuntimeState();
+                        UpdateRequestLeaveButtonState();
                     });
                 });
 
@@ -546,17 +649,215 @@ namespace AcademicSentinel.Client.Views.SAC
             }
         }
 
-        private void BtnLeave_Click(object sender, RoutedEventArgs e)
+        private void StopMonitoringForApprovedLeave()
         {
-            if (_isMonitoringActive)
+            _monitoringCountdownEndsAt = null;
+            _monitoringStartedAt = null;
+            _isMonitoringActive = false;
+            _detectorsRunning = false;
+            _ = _detectorRuntime?.StopMonitoringAsync();
+            _pendingViolationQueue.Clear();
+            _lastViolationSentByType.Clear();
+
+            if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
             {
+                compactStatus.Text = "Monitoring: Stopped";
+                compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97));
+            }
+
+            TxtMonitoringStatus.Text = "Stopped";
+            TxtMonitoringStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9E9E9E"));
+
+            if (FindName("TxtHeaderSessionClock") is TextBlock headerClock)
+                headerClock.Text = string.Empty;
+
+            if (FindName("TxtFullCountdown") is TextBlock fullCountdown)
+                fullCountdown.Text = string.Empty;
+        }
+
+        private async Task ForceStopSignalRAsync()
+        {
+            var connection = _hubConnection;
+            if (connection == null)
+                return;
+
+            try
+            {
+                await connection.StopAsync();
+            }
+            catch
+            {
+            }
+            finally
+            {
+                _hubConnection = null;
+                _pendingViolationQueue.Clear();
+            }
+        }
+
+        private async void BtnRequestLeave_Click(object sender, RoutedEventArgs e)
+        {
+            if (_sessionEnded)
+            {
+                int sessionEndedStudentId = SessionManager.CurrentUser?.Id ?? 0;
+                await LeaveSessionSafelyAsync(sessionEndedStudentId);
                 return;
             }
 
-            if (MessageBox.Show("Leave this session and return to dashboard?", "Leave Session", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            int studentId = SessionManager.CurrentUser?.Id ?? 0;
+            if (studentId <= 0)
             {
-                ReturnToStudentDashboard();
+                UpdateRequestLeaveButtonState();
+                return;
             }
+
+            switch (_currentPhase)
+            {
+                case ExamPhase.PreSession:
+                    await LeaveSessionSafelyAsync(studentId);
+                    return;
+
+                case ExamPhase.Countdown:
+                    return;
+
+                case ExamPhase.Active:
+                {
+                    if (_leaveRequestState == LeaveRequestState.Locked)
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            if (FindName("BtnRequestLeave") is Button leaveButton)
+                            {
+                                leaveButton.IsEnabled = false;
+                                leaveButton.Content = "Waiting for Instructor...";
+                            }
+                        });
+
+                        try
+                        {
+                            if (_hubConnection == null || _hubConnection.State != HubConnectionState.Connected)
+                            {
+                                MessageBox.Show("Not connected to server.", "Request Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                UpdateRequestLeaveButtonState();
+                                return;
+                            }
+
+                            _leaveRequestState = LeaveRequestState.Pending;
+                            UpdateRequestLeaveButtonState();
+                            await _hubConnection.InvokeAsync("RequestLeave", _roomId, studentId);
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"Failed to request leave: {ex.Message}", "Request Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            if (_leaveRequestState != LeaveRequestState.Pending)
+                                UpdateRequestLeaveButtonState();
+                        }
+
+                        return;
+                    }
+
+                    if (_leaveRequestState == LeaveRequestState.Unlocked)
+                    {
+                        await LeaveSessionSafelyAsync(studentId);
+                    }
+
+                    return;
+                }
+
+                default:
+                    return;
+            }
+        }
+
+        private async Task LeaveSessionSafelyAsync(int studentId)
+        {
+            _allowClose = true;
+            _isPermanentlyDone = true;
+            _detectorsRunning = false;
+            if (_detectorRuntime != null)
+            {
+                await _detectorRuntime.StopMonitoringAsync();
+            }
+            _statusTimer?.Stop();
+            _compactCountdownTimer?.Stop();
+            _detectorPollTimer?.Stop();
+
+            try
+            {
+                if (studentId > 0 && _hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
+                {
+                    await _hubConnection.InvokeAsync("NotifyStudentLeftSafely", _roomId, studentId);
+                }
+            }
+            catch
+            {
+                // best-effort notify; do not block clean exit
+            }
+
+            await ForceStopSignalRAsync();
+
+            ReturnToStudentDashboard();
+        }
+
+        private void UpdateRequestLeaveButtonState()
+        {
+            if (FindName("BtnRequestLeave") is not Button btn)
+                return;
+
+            Dispatcher.Invoke(() =>
+            {
+                if (_sessionEnded)
+                {
+                    btn.Content = "Leave Session";
+                    btn.IsEnabled = true;
+                    btn.Background = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                    btn.Foreground = Brushes.White;
+                    return;
+                }
+
+                switch (_currentPhase)
+                {
+                    case ExamPhase.PreSession:
+                        btn.Content = "Leave Session";
+                        btn.IsEnabled = true;
+                        btn.Background = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                        btn.Foreground = Brushes.White;
+                        break;
+
+                    case ExamPhase.Countdown:
+                        btn.Content = "Cannot Leave";
+                        btn.IsEnabled = false;
+                        btn.Background = new SolidColorBrush(Color.FromRgb(158, 158, 158));
+                        btn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#424242"));
+                        break;
+
+                    case ExamPhase.Active:
+                        switch (_leaveRequestState)
+                        {
+                            case LeaveRequestState.Locked:
+                                btn.Content = "Request to Leave";
+                                btn.IsEnabled = true;
+                                btn.Background = new SolidColorBrush(Color.FromRgb(211, 47, 47));
+                                btn.Foreground = Brushes.White;
+                                break;
+
+                            case LeaveRequestState.Pending:
+                                btn.Content = "Waiting for Instructor...";
+                                btn.IsEnabled = false;
+                                btn.Background = new SolidColorBrush(Color.FromRgb(158, 158, 158));
+                                btn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#424242"));
+                                break;
+
+                            case LeaveRequestState.Unlocked:
+                                btn.Content = "Permission Granted - Leave Now";
+                                btn.IsEnabled = true;
+                                btn.Background = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                                btn.Foreground = Brushes.White;
+                                break;
+                        }
+                        break;
+                }
+            });
         }
 
         private void ReturnToStudentDashboard()
@@ -687,7 +988,7 @@ namespace AcademicSentinel.Client.Views.SAC
                 headerExpand.Visibility = Visibility.Collapsed;
             if (FindName("SessionContentGrid") is FrameworkElement contentGrid)
                 contentGrid.Margin = new Thickness(30, 24, 30, 24);
-            if (FindName("BtnLeave") is System.Windows.Controls.Button leaveButton)
+            if (FindName("BtnRequestLeave") is System.Windows.Controls.Button leaveButton)
                 leaveButton.Visibility = Visibility.Visible;
             Left = (SystemParameters.WorkArea.Width - Width) / 2 + SystemParameters.WorkArea.Left;
             Top = (SystemParameters.WorkArea.Height - Height) / 2 + SystemParameters.WorkArea.Top;
@@ -716,14 +1017,14 @@ namespace AcademicSentinel.Client.Views.SAC
                 return;
 
             WindowState = WindowState.Normal;
-            Width = 360;
+            Width = 420;
             Height = 220;
             ResizeMode = ResizeMode.NoResize;
             Topmost = true;
 
             if (FindName("BtnHeaderExpand") is Button headerExpand)
                 headerExpand.Visibility = Visibility.Visible;
-            if (FindName("BtnLeave") is Button leaveButton)
+            if (FindName("BtnRequestLeave") is Button leaveButton)
                 leaveButton.Visibility = Visibility.Visible;
             if (FindName("SessionContentGrid") is FrameworkElement contentGrid)
                 contentGrid.Margin = new Thickness(8, 8, 8, 8);
@@ -739,6 +1040,13 @@ namespace AcademicSentinel.Client.Views.SAC
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
+            if (!_allowClose && !_isPermanentlyDone && _leaveRequestState != LeaveRequestState.Unlocked)
+            {
+                e.Cancel = true;
+                WindowState = WindowState.Minimized;
+                return;
+            }
+
             _statusTimer?.Stop();
             _compactCountdownTimer?.Stop();
             _detectorPollTimer?.Stop();

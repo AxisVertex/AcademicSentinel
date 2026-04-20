@@ -5,6 +5,9 @@
         Title="Secure Assessment Client - FourCUDA"
         Height="720" Width="900"
         WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Topmost="True"
         Background="#F5F5F5"
         FontFamily="{materialDesign:MaterialDesignFont}"
         TextElement.Foreground="#1B1B1B"
@@ -34,45 +37,37 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <materialDesign:PackIcon Kind="ShieldCheckOutline" Width="24" Height="24"
+                <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <materialDesign:PackIcon Grid.Column="0" Kind="ShieldCheckOutline" Width="24" Height="24"
                                              Foreground="#1B5E20" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock x:Name="TxtHeaderSessionClock"
+                    <TextBlock Grid.Column="1" x:Name="TxtHeaderSessionClock"
                                Text=""
-                               FontSize="18" FontWeight="Bold"
-                               Foreground="#1B5E20" VerticalAlignment="Center"/>
-                </StackPanel>
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="#1B5E20" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                </Grid>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button x:Name="BtnHeaderExpand" Visibility="Collapsed" Margin="0,0,8,0"
+                    <Button x:Name="BtnHeaderExpand" Visibility="Collapsed" Margin="0,0,10,0"
                             Padding="10,6" FontSize="13" Cursor="Hand"
                             Content="□" Click="BtnExpandCompact_Click"/>
 
-                    <!-- Leave Button -->
-                    <Button x:Name="BtnLeave" Padding="16,8" FontSize="13"
-                            Cursor="Hand" Click="BtnLeave_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="leaveBorder" CornerRadius="8" Padding="16,8" Cursor="Hand">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="Transparent"/>
-                                            <Setter Property="BorderBrush" Value="#E0E0E0"/>
-                                            <Setter Property="BorderThickness" Value="1.5"/>
-                                        </Style>
-                                    </Border.Style>
-                                    <TextBlock x:Name="TxtLeaveBtn" Text="Leave" FontSize="13" Foreground="#616161"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="leaveBorder" Property="Background" Value="#FFEBEE"/>
-                                        <Setter TargetName="leaveBorder" Property="BorderBrush" Value="#FFCDD2"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
+                    <Button x:Name="BtnRequestLeave"
+                            Content="Request to Leave"
+                            Padding="12,7"
+                            MinWidth="138"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Cursor="Hand"
+                            Background="#D32F2F"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Click="BtnRequestLeave_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
