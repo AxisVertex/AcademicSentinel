@@ -20,6 +20,8 @@
         <Color x:Key="FEUGold">#FFB300</Color>
         <Color x:Key="FEULightGray">#F0F2F5</Color>
         <Color x:Key="FEUSubText">#616161</Color>
+        <Color x:Key="FEUDanger">#D32F2F</Color>
+        <Color x:Key="FEUDangerDark">#B71C1C</Color>
 
         <SolidColorBrush x:Key="FEUGreenBrush" Color="{StaticResource FEUGreen}"/>
         <SolidColorBrush x:Key="FEUGreenLightBrush" Color="{StaticResource FEUGreenLight}"/>
@@ -27,6 +29,8 @@
         <SolidColorBrush x:Key="FEUGoldBrush" Color="{StaticResource FEUGold}"/>
         <SolidColorBrush x:Key="FEULightGrayBrush" Color="{StaticResource FEULightGray}"/>
         <SolidColorBrush x:Key="FEUSubTextBrush" Color="{StaticResource FEUSubText}"/>
+        <SolidColorBrush x:Key="FEUDangerBrush" Color="{StaticResource FEUDanger}"/>
+        <SolidColorBrush x:Key="FEUDangerDarkBrush" Color="{StaticResource FEUDangerDark}"/>
 
         <!-- Sidebar button -->
         <Style x:Key="SidebarButtonStyle" TargetType="RadioButton">
@@ -98,6 +102,31 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="b" Property="Background" Value="#0D1B5E20"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DangerBtn" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource FEUDangerBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource FEUDangerDarkBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -237,10 +266,15 @@
                                FontSize="16" FontWeight="SemiBold"
                                Foreground="{StaticResource FEUSubTextBrush}"
                                HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                    <Button Content="Create Session"
-                            Style="{StaticResource PrimaryBtn}"
-                            Click="BtnCreateSession_Click"
-                            HorizontalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Content="Create Session"
+                                Style="{StaticResource PrimaryBtn}"
+                                Click="BtnCreateSession_Click"
+                                Margin="0,0,8,0"/>
+                        <Button Content="Force End Stuck Session"
+                                Style="{StaticResource DangerBtn}"
+                                Click="BtnForceEndStuckSession_Click"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

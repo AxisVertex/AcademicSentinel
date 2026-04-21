@@ -17,6 +17,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading; // NEW: Required for the Live Timer
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using MaterialDesignThemes.Wpf;
 using AcademicSentinel.Client.Models;
 using AcademicSentinel.Client.Views.IMC.Dialogs;
@@ -52,7 +53,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private readonly HashSet<int> _safelyLeftStudentIds = new();
         private readonly HashSet<int> _permanentlyDismissedStudents = new HashSet<int>();
         private readonly HashSet<int> _studentsWithViolations = new HashSet<int>();
-        private readonly Dictionary<int, ObservableCollection<StudentMonitoringEvent>> _studentLogs = new();
+        private readonly ConcurrentDictionary<int, ObservableCollection<StudentMonitoringEvent>> _studentLogs = new();
         private int? _selectedStudentId;
 
         public ObservableCollection<LiveStudentStatus> ActiveStudents { get; set; }
@@ -717,16 +718,15 @@ namespace AcademicSentinel.Client.Views.IMC
 
         private void AppendStudentMonitoringEvent(int studentId, string eventType, int severityScore)
         {
-            if (!_studentLogs.TryGetValue(studentId, out var logs))
-            {
-                logs = new ObservableCollection<StudentMonitoringEvent>();
-                _studentLogs[studentId] = logs;
-            }
+            var logs = _studentLogs.GetOrAdd(studentId, _ => new ObservableCollection<StudentMonitoringEvent>());
 
-            logs.Insert(0, new StudentMonitoringEvent
+            _ = Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                EventType = eventType,
-                SeverityScore = severityScore
+                logs.Insert(0, new StudentMonitoringEvent
+                {
+                    EventType = eventType,
+                    SeverityScore = severityScore
+                });
             });
         }
 
