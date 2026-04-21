@@ -1,5 +1,8 @@
 using Microsoft.Win32;
+using System.Management;
 using System.Diagnostics;
+using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 using SecureAssessmentClient.Models.Monitoring;
 using SecureAssessmentClient.Utilities;
 
@@ -19,6 +22,163 @@ namespace SecureAssessmentClient.Services.DetectionService
         {
             _detectedViolations = new List<string>();
             _hasRunInitialCheck = false;
+        }
+
+        public async Task<(bool IsVm, int MonitorCount, bool IsRemote)> PerformFullScanAsync()
+        {
+            return await Task.Run(() =>
+            {
+                bool isVm = false;
+                int monitorCount = 1;
+                bool isRemote = false;
+
+                try
+                {
+                    isVm = DetectVmFromComputerSystemWmi()
+                           || DetectVmFromVideoControllerWmi()
+                           || DetectVmFromMacPrefixes();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"VAC full scan encountered an error: {ex.Message}");
+                }
+
+                try
+                {
+                    monitorCount = DetectMonitorCount();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Monitor count probe failed: {ex.Message}");
+                    monitorCount = 1;
+                }
+
+                try
+                {
+                    isRemote = DetectRemoteDesktopSession();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Remote desktop probe failed: {ex.Message}");
+                    isRemote = false;
+                }
+
+                return (isVm, Math.Max(1, monitorCount), isRemote);
+            });
+        }
+
+        private static bool DetectVmFromComputerSystemWmi()
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher("SELECT Manufacturer, Model FROM Win32_ComputerSystem");
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    var manufacturer = Convert.ToString(obj["Manufacturer"]) ?? string.Empty;
+                    var model = Convert.ToString(obj["Model"]) ?? string.Empty;
+                    var text = $"{manufacturer} {model}";
+
+                    if (ContainsAny(text, "VMware", "VirtualBox", "innotek", "QEMU", "Hyper-V"))
+                        return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"WMI Win32_ComputerSystem query failed: {ex.Message}");
+            }
+
+            return false;
+        }
+
+        private static bool DetectVmFromVideoControllerWmi()
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_VideoController");
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    var name = Convert.ToString(obj["Name"]) ?? string.Empty;
+                    if (ContainsAny(name, "VMware SVGA", "VirtualBox Graphics"))
+                        return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"WMI Win32_VideoController query failed: {ex.Message}");
+            }
+
+            return false;
+        }
+
+        private static bool DetectVmFromMacPrefixes()
+        {
+            try
+            {
+                var vmPrefixes = new[]
+                {
+                    "005056", // VMware
+                    "000C29", // VMware
+                    "080027"  // VirtualBox
+                };
+
+                foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    var mac = nic.GetPhysicalAddress()?.ToString() ?? string.Empty;
+                    if (mac.Length < 6)
+                        continue;
+
+                    if (vmPrefixes.Any(p => mac.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                        return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"MAC address virtualization probe failed: {ex.Message}");
+            }
+
+            return false;
+        }
+
+        private static int DetectMonitorCount()
+        {
+            try
+            {
+                int count = 0;
+                using var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_DesktopMonitor");
+                foreach (var _ in searcher.Get())
+                    count++;
+
+                return count > 0 ? count : 1;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"WMI Win32_DesktopMonitor query failed: {ex.Message}");
+                return 1;
+            }
+        }
+
+        private static bool DetectRemoteDesktopSession()
+        {
+            try
+            {
+                const int SM_REMOTESESSION = 0x1000;
+                return GetSystemMetrics(SM_REMOTESESSION) != 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+
+        private static bool ContainsAny(string source, params string[] probes)
+        {
+            if (string.IsNullOrWhiteSpace(source) || probes == null || probes.Length == 0)
+                return false;
+
+            return probes.Any(p => source.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         /// <summary>

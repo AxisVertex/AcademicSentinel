@@ -404,7 +404,19 @@
                                                             Margin="6,0,36,0"
                                                             Visibility="{Binding IsLeaveRequested, Converter={StaticResource BoolToVis}}"
                                                             Click="BtnApproveLeave_Click"/>
-                                                    <materialDesign:PackIcon Grid.Column="2" Kind="AlertCircle" Width="16" Height="16" Foreground="#E53935" VerticalAlignment="Center" Margin="0,0,6,0" Visibility="{Binding HasViolation, Converter={StaticResource BoolToVis}}"/>
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                                                        <materialDesign:PackIcon Kind="AlertCircle"
+                                                                                 Width="16"
+                                                                                 Height="16"
+                                                                                 Foreground="#E53935"
+                                                                                 Margin="0,0,4,0"
+                                                                                 Visibility="{Binding HasViolation, Converter={StaticResource BoolToVis}}"/>
+                                                        <materialDesign:PackIcon Kind="DesktopClassic"
+                                                                                 Width="16"
+                                                                                 Height="16"
+                                                                                 Foreground="#D32F2F"
+                                                                                 Visibility="{Binding HasHardwareViolation, Converter={StaticResource BoolToVis}}"/>
+                                                    </StackPanel>
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
@@ -423,10 +435,44 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                    <Border x:Name="CriticalAlertBanner"
+                            Grid.Row="0"
+                            Background="#D32F2F"
+                            CornerRadius="8"
+                            Padding="10,8"
+                            Margin="0,0,0,12"
+                            Visibility="Collapsed">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="TxtCriticalAlertMessage"
+                                       Grid.Column="0"
+                                       Foreground="White"
+                                       FontWeight="Bold"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center"
+                                       Text="🚨 CRITICAL SECURITY ALERT"/>
+                            <Button Grid.Column="1"
+                                    Content="Dismiss"
+                                    Margin="10,0,0,0"
+                                    Padding="10,4"
+                                    Background="#33FFFFFF"
+                                    Foreground="White"
+                                    BorderBrush="#66FFFFFF"
+                                    BorderThickness="1"
+                                    Cursor="Hand"
+                                    Click="BtnDismissCriticalAlert_Click"/>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="1" Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
@@ -450,7 +496,7 @@
                         </ComboBox>
                     </Grid>
 
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                         <Grid>
                             <StackPanel x:Name="EmptyLogFeedState" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,60" Visibility="Visible">
                                 <materialDesign:PackIcon Kind="TextBoxOutline" Width="48" Height="48" Foreground="#E0E0E0" HorizontalAlignment="Center"/>
@@ -530,6 +576,76 @@
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
+
+                        <Border Background="White" CornerRadius="8" Padding="12" Margin="0,0,0,12" BorderBrush="#EEEEEE" BorderThickness="1">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.08" Color="Black"/>
+                            </Border.Effect>
+                            <StackPanel>
+                                <TextBlock Text="ENVIRONMENT PROFILE" FontSize="10" FontWeight="Bold" Foreground="{StaticResource FEUSubTextBrush}" Margin="0,0,0,8"/>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="Environment: " FontSize="11" Foreground="{StaticResource FEUSubTextBrush}"/>
+                                    <TextBlock FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="Native OS"/>
+                                                <Setter Property="Foreground" Value="#2E7D32"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUsingVM}" Value="True">
+                                                        <Setter Property="Text" Value="Virtual Machine"/>
+                                                        <Setter Property="Foreground" Value="#D32F2F"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="Displays: " FontSize="11" Foreground="{StaticResource FEUSubTextBrush}"/>
+                                    <TextBlock Text="{Binding MonitorCount}" FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#2E7D32"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MonitorCount}" Value="2">
+                                                        <Setter Property="Foreground" Value="#D32F2F"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding MonitorCount}" Value="3">
+                                                        <Setter Property="Foreground" Value="#D32F2F"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding MonitorCount}" Value="4">
+                                                        <Setter Property="Foreground" Value="#D32F2F"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding MonitorCount}" Value="5">
+                                                        <Setter Property="Foreground" Value="#D32F2F"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Remote Access: " FontSize="11" Foreground="{StaticResource FEUSubTextBrush}"/>
+                                    <TextBlock FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="Inactive"/>
+                                                <Setter Property="Foreground" Value="#2E7D32"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRemoteDesktop}" Value="True">
+                                                        <Setter Property="Text" Value="Active"/>
+                                                        <Setter Property="Foreground" Value="#D32F2F"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
                         <TextBlock Text="VIOLATION STATISTICS" FontSize="10" FontWeight="Bold" Foreground="{StaticResource FEUSubTextBrush}" Margin="0,0,0,8" Height="15"/>
                         <Border Background="#FFEBEE" CornerRadius="8" Padding="16" Margin="0,0,0,20" Height="136">

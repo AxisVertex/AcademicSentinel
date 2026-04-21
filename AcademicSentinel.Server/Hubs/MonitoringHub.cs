@@ -275,6 +275,11 @@ public class MonitoringHub : Hub
         });
     }
 
+    public async Task UpdateHardwareState(int roomId, int studentId, bool isVm, int monitorCount, bool isRemote)
+    {
+        await Clients.Group(roomId.ToString()).SendAsync("ReceiveHardwareStateUpdate", studentId, isVm, monitorCount, isRemote);
+    }
+
     public async Task RequestLeave(int roomId, int studentId)
     {
         var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;

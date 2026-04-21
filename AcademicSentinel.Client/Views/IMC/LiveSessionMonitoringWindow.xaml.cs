@@ -496,6 +496,30 @@ namespace AcademicSentinel.Client.Views.IMC
                 }
             }));
 
+            _hubConnection.On<int, bool, int, bool>("ReceiveHardwareStateUpdate", (studentId, isVm, monitorCount, isRemote) => Dispatcher.Invoke(() =>
+            {
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (targetStudent == null)
+                    return;
+
+                targetStudent.IsUsingVM = isVm;
+                targetStudent.MonitorCount = Math.Max(1, monitorCount);
+                targetStudent.IsRemoteDesktop = isRemote;
+
+                var hasHardwareViolation = isVm || monitorCount > 1 || isRemote;
+                targetStudent.HasHardwareViolation = hasHardwareViolation;
+                if (hasHardwareViolation)
+                {
+                    targetStudent.HasViolation = true;
+                    _studentsWithViolations.Add(studentId);
+
+                    CriticalAlertBanner.Visibility = Visibility.Visible;
+                    TxtCriticalAlertMessage.Text = $"🚨 CRITICAL SECURITY ALERT: {targetStudent.Name} is using a restricted hardware environment!";
+                }
+
+                _studentsView.Refresh();
+            }));
+
             try { await _hubConnection.StartAsync(); await _hubConnection.InvokeAsync("JoinRoom", _roomId.ToString()); }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
@@ -676,6 +700,7 @@ namespace AcademicSentinel.Client.Views.IMC
             {
                 _selectedStudentId = _selectedStudent.StudentId;
                 RightDetailPanel.Visibility = Visibility.Visible;
+                StudentDetailPanel.DataContext = _selectedStudent;
 
                 TxtSelectedName.Text = _selectedStudent.Name;
                 TxtSelectedStatus.Text = _selectedStudent.Status.ToUpper();
@@ -713,6 +738,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private void CollapseDetailPanel()
         {
             RightDetailPanel.Visibility = Visibility.Collapsed;
+            StudentDetailPanel.DataContext = null;
             _selectedStudent = null;
             _selectedStudentId = null;
 
@@ -926,6 +952,11 @@ namespace AcademicSentinel.Client.Views.IMC
             if (sender is Button btn && btn.ContextMenu != null) { btn.ContextMenu.PlacementTarget = btn; btn.ContextMenu.IsOpen = true; }
         }
 
+        private void BtnDismissCriticalAlert_Click(object sender, RoutedEventArgs e)
+        {
+            CriticalAlertBanner.Visibility = Visibility.Collapsed;
+        }
+
         // ======================== MOCK DATA INJECTOR ========================
 
         private void BtnInjectMockData_Click(object sender, RoutedEventArgs e)
@@ -956,6 +987,10 @@ namespace AcademicSentinel.Client.Views.IMC
         private int _violations;
         private bool _isLeaveRequested;
         private bool _hasViolation;
+        private bool _hasHardwareViolation;
+        private bool _isUsingVm;
+        private int _monitorCount = 1;
+        private bool _isRemoteDesktop;
         public string Email { get; set; }
         public string ProfileImageUrl { get; set; } = string.Empty;
         public Visibility HasProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Collapsed : Visibility.Visible;
@@ -977,6 +1012,10 @@ namespace AcademicSentinel.Client.Views.IMC
         }
         public bool IsLeaveRequested { get => _isLeaveRequested; set { _isLeaveRequested = value; OnPropertyChanged(); } }
         public bool HasViolation { get => _hasViolation; set { _hasViolation = value; OnPropertyChanged(); } }
+        public bool HasHardwareViolation { get => _hasHardwareViolation; set { _hasHardwareViolation = value; OnPropertyChanged(); } }
+        public bool IsUsingVM { get => _isUsingVm; set { _isUsingVm = value; OnPropertyChanged(); } }
+        public int MonitorCount { get => _monitorCount; set { _monitorCount = value < 1 ? 1 : value; OnPropertyChanged(); } }
+        public bool IsRemoteDesktop { get => _isRemoteDesktop; set { _isRemoteDesktop = value; OnPropertyChanged(); } }
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }

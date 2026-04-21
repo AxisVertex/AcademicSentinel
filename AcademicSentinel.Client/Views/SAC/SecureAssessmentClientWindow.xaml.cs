@@ -166,7 +166,35 @@ namespace AcademicSentinel.Client.Views.SAC
                 IdleThresholdSeconds = _roomDetectionSettings.IdleThresholdSeconds,
                 EnableProcessDetection = _roomDetectionSettings.EnableProcessDetection,
                 EnableVirtualizationCheck = _roomDetectionSettings.EnableVirtualizationCheck,
-                BlacklistedProcessNames = new HashSet<string>(ProcessBlacklist, StringComparer.OrdinalIgnoreCase)
+                BlacklistedProcessNames = new HashSet<string>(ProcessBlacklist, StringComparer.OrdinalIgnoreCase),
+                OnHardwareStateDetected = async (isVm, monitorCount, isRemote) =>
+                {
+                    try
+                    {
+                        if (_hubConnection == null || _hubConnection.State != HubConnectionState.Connected)
+                            return;
+
+                        int studentId = SessionManager.CurrentUser?.Id ?? 0;
+                        if (studentId <= 0)
+                            return;
+
+                        await _hubConnection.InvokeAsync("UpdateHardwareState", _roomId, studentId, isVm, monitorCount, isRemote);
+                    }
+                    catch
+                    {
+                        // keep session stable
+                    }
+                },
+                OnPreFlightViolationDetected = finding =>
+                {
+                    if (finding == null)
+                        return;
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        _ = ReportViolationAsync(finding.EventType, finding.SeverityScore, finding.Description);
+                    });
+                }
             });
 
             var enabledModules = new List<string>();

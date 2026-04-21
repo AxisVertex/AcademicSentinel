@@ -10,7 +10,9 @@ namespace AcademicSentinel.Client.Services.SAC
     {
         private readonly DetectorRuntimeOptions _options;
         private readonly BehavioralMonitoringService _behavioralMonitoringService;
+        private readonly EnvironmentIntegrityService _environmentIntegrityService;
         private bool _isStarted;
+        private bool _preFlightCompleted;
         public bool IsLoggingEnabled { get; private set; } = true;
 
         public SacDetectorRuntime(DetectorRuntimeOptions options)
@@ -31,6 +33,7 @@ namespace AcademicSentinel.Client.Services.SAC
             };
 
             _behavioralMonitoringService = new BehavioralMonitoringService(settings, _options.BlacklistedProcessNames);
+            _environmentIntegrityService = new EnvironmentIntegrityService();
         }
 
         public IReadOnlyList<DetectorFinding> Poll(bool isWindowActive)
@@ -54,7 +57,7 @@ namespace AcademicSentinel.Client.Services.SAC
             return MapFindings(_behavioralMonitoringService.Poll(false));
         }
 
-        public void SetMonitoringEnabled(bool enabled)
+        public async Task SetMonitoringEnabledAsync(bool enabled)
         {
             if (enabled)
             {
@@ -64,6 +67,25 @@ namespace AcademicSentinel.Client.Services.SAC
                 _isStarted = true;
                 IsLoggingEnabled = true;
                 _behavioralMonitoringService.StartMonitoring();
+
+                if (!_preFlightCompleted)
+                {
+                    _preFlightCompleted = true;
+
+                    var hardwareState = await _environmentIntegrityService.PerformFullScanAsync();
+
+                    if (_options.OnHardwareStateDetected != null)
+                    {
+                        await _options.OnHardwareStateDetected(hardwareState.IsVm, hardwareState.MonitorCount, hardwareState.IsRemote);
+                    }
+
+                    if (hardwareState.IsVm || hardwareState.MonitorCount > 1 || hardwareState.IsRemote)
+                    {
+                        var description = $"Critical Environment Violation: VM: {hardwareState.IsVm}, Monitors: {hardwareState.MonitorCount}, Remote: {hardwareState.IsRemote}";
+                        _options.OnPreFlightViolationDetected?.Invoke(new DetectorFinding("VAC_HAS_VIOLATION", 50, description));
+                    }
+                }
+
                 return;
             }
 
@@ -73,6 +95,11 @@ namespace AcademicSentinel.Client.Services.SAC
             _isStarted = false;
             IsLoggingEnabled = false;
             _behavioralMonitoringService.StopMonitoring();
+        }
+
+        public void SetMonitoringEnabled(bool enabled)
+        {
+            _ = SetMonitoringEnabledAsync(enabled);
         }
 
         public async Task StopMonitoringAsync()
@@ -107,6 +134,8 @@ namespace AcademicSentinel.Client.Services.SAC
         public bool EnableProcessDetection { get; set; }
         public bool EnableVirtualizationCheck { get; set; }
         public HashSet<string> BlacklistedProcessNames { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public Func<bool, int, bool, Task> OnHardwareStateDetected { get; set; }
+        public Action<DetectorFinding> OnPreFlightViolationDetected { get; set; }
     }
 
     internal sealed class DetectorFinding
