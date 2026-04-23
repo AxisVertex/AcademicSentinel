@@ -9,12 +9,11 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 {
     internal sealed class EnvironmentIntegrityService
     {
-        public async Task<(bool IsVm, int MonitorCount, bool IsRemote)> PerformFullScanAsync()
+        public async Task<(bool IsVm, bool IsRemote)> PerformFullScanAsync()
         {
             return await Task.Run(() =>
             {
                 bool isVm = false;
-                int monitorCount = 1;
                 bool isRemote = false;
 
                 try
@@ -30,15 +29,6 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
                 try
                 {
-                    monitorCount = DetectMonitorCount();
-                }
-                catch
-                {
-                    monitorCount = 1;
-                }
-
-                try
-                {
                     isRemote = DetectRemoteDesktopSession();
                 }
                 catch
@@ -46,7 +36,7 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
                     isRemote = false;
                 }
 
-                return (isVm, Math.Max(1, monitorCount), isRemote);
+                return (isVm, isRemote);
             });
         }
 
@@ -117,23 +107,6 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
             }
 
             return false;
-        }
-
-        private static int DetectMonitorCount()
-        {
-            try
-            {
-                int count = 0;
-                using var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_DesktopMonitor");
-                foreach (var _ in searcher.Get())
-                    count++;
-
-                return count > 0 ? count : 1;
-            }
-            catch
-            {
-                return 1;
-            }
         }
 
         private static bool DetectRemoteDesktopSession()

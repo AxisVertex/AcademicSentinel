@@ -602,31 +602,6 @@
                                     </TextBlock>
                                 </StackPanel>
 
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="Displays: " FontSize="11" Foreground="{StaticResource FEUSubTextBrush}"/>
-                                    <TextBlock Text="{Binding MonitorCount}" FontSize="11" FontWeight="SemiBold">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="#2E7D32"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding MonitorCount}" Value="2">
-                                                        <Setter Property="Foreground" Value="#D32F2F"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding MonitorCount}" Value="3">
-                                                        <Setter Property="Foreground" Value="#D32F2F"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding MonitorCount}" Value="4">
-                                                        <Setter Property="Foreground" Value="#D32F2F"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding MonitorCount}" Value="5">
-                                                        <Setter Property="Foreground" Value="#D32F2F"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Remote Access: " FontSize="11" Foreground="{StaticResource FEUSubTextBrush}"/>
                                     <TextBlock FontSize="11" FontWeight="SemiBold">

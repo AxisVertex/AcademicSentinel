@@ -78,12 +78,12 @@ namespace AcademicSentinel.Client.Services.SAC
 
                     if (_options.OnHardwareStateDetected != null)
                     {
-                        await _options.OnHardwareStateDetected(hardwareState.IsVm, hardwareState.MonitorCount, hardwareState.IsRemote);
+                        await _options.OnHardwareStateDetected(hardwareState.IsVm, hardwareState.IsRemote);
                     }
 
-                    if (hardwareState.IsVm || hardwareState.MonitorCount > 1 || hardwareState.IsRemote)
+                    if (hardwareState.IsVm || hardwareState.IsRemote)
                     {
-                        var description = $"Critical Environment Violation: VM: {hardwareState.IsVm}, Monitors: {hardwareState.MonitorCount}, Remote: {hardwareState.IsRemote}";
+                        var description = $"Critical Environment Violation: VM: {hardwareState.IsVm}, Remote: {hardwareState.IsRemote}";
                         _options.OnPreFlightViolationDetected?.Invoke(new DetectorFinding("VAC_HAS_VIOLATION", 50, description));
                     }
                 }
@@ -146,7 +146,7 @@ namespace AcademicSentinel.Client.Services.SAC
         public bool EnableProcessDetection { get; set; }
         public bool EnableVirtualizationCheck { get; set; }
         public HashSet<string> BlacklistedProcessNames { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        public Func<bool, int, bool, Task> OnHardwareStateDetected { get; set; }
+        public Func<bool, bool, Task> OnHardwareStateDetected { get; set; }
         public Action<DetectorFinding> OnPreFlightViolationDetected { get; set; }
     }
 

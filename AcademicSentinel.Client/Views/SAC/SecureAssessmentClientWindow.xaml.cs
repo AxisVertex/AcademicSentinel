@@ -167,7 +167,7 @@ namespace AcademicSentinel.Client.Views.SAC
                 EnableProcessDetection = _roomDetectionSettings.EnableProcessDetection,
                 EnableVirtualizationCheck = _roomDetectionSettings.EnableVirtualizationCheck,
                 BlacklistedProcessNames = new HashSet<string>(ProcessBlacklist, StringComparer.OrdinalIgnoreCase),
-                OnHardwareStateDetected = async (isVm, monitorCount, isRemote) =>
+                OnHardwareStateDetected = async (isVm, isRemote) =>
                 {
                     try
                     {
@@ -178,7 +178,7 @@ namespace AcademicSentinel.Client.Views.SAC
                         if (studentId <= 0)
                             return;
 
-                        await _hubConnection.InvokeAsync("UpdateHardwareState", _roomId, studentId, isVm, monitorCount, isRemote);
+                        await _hubConnection.InvokeAsync("UpdateHardwareState", _roomId, studentId, isVm, isRemote);
                     }
                     catch
                     {

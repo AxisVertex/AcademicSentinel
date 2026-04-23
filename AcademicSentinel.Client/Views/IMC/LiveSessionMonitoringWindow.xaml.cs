@@ -497,17 +497,16 @@ namespace AcademicSentinel.Client.Views.IMC
                 }
             }));
 
-            _hubConnection.On<int, bool, int, bool>("ReceiveHardwareStateUpdate", (studentId, isVm, monitorCount, isRemote) => Dispatcher.Invoke(() =>
+            _hubConnection.On<int, bool, bool>("ReceiveHardwareStateUpdate", (studentId, isVm, isRemote) => Dispatcher.Invoke(() =>
             {
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent == null)
                     return;
 
                 targetStudent.IsUsingVM = isVm;
-                targetStudent.MonitorCount = Math.Max(1, monitorCount);
                 targetStudent.IsRemoteDesktop = isRemote;
 
-                var hasHardwareViolation = isVm || monitorCount > 1 || isRemote;
+                var hasHardwareViolation = isVm || isRemote;
                 targetStudent.HasHardwareViolation = hasHardwareViolation;
                 if (hasHardwareViolation)
                 {
@@ -989,7 +988,6 @@ namespace AcademicSentinel.Client.Views.IMC
         private bool _hasViolation;
         private bool _hasHardwareViolation;
         private bool _isUsingVm;
-        private int _monitorCount = 1;
         private bool _isRemoteDesktop;
         public string Email { get; set; }
         public string ProfileImageUrl { get; set; } = string.Empty;
@@ -1014,7 +1012,6 @@ namespace AcademicSentinel.Client.Views.IMC
         public bool HasViolation { get => _hasViolation; set { _hasViolation = value; OnPropertyChanged(); } }
         public bool HasHardwareViolation { get => _hasHardwareViolation; set { _hasHardwareViolation = value; OnPropertyChanged(); } }
         public bool IsUsingVM { get => _isUsingVm; set { _isUsingVm = value; OnPropertyChanged(); } }
-        public int MonitorCount { get => _monitorCount; set { _monitorCount = value < 1 ? 1 : value; OnPropertyChanged(); } }
         public bool IsRemoteDesktop { get => _isRemoteDesktop; set { _isRemoteDesktop = value; OnPropertyChanged(); } }
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
