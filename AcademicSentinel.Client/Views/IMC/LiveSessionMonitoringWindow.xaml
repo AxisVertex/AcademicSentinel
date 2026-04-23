@@ -237,39 +237,39 @@
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
 
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,0,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
 
-                            <Button Grid.Column="0" Style="{StaticResource GhostBtn}" Click="BtnViewParticipants_Click">
-                                <StackPanel Orientation="Horizontal">
+                                <Border Grid.Column="0" Background="#FFF3E0" CornerRadius="6" Padding="8,6" BorderBrush="#FFCC80" BorderThickness="1" Margin="0,0,6,0">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="Time Remaining:" FontSize="10" Foreground="#E65100" HorizontalAlignment="Center"/>
+                                        <TextBlock x:Name="CountdownDisabledIndicator" Text="Timer Disabled" FontSize="10" Foreground="Gray" Visibility="Collapsed" HorizontalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtCountdownDisplay" Text="--:--" FontSize="16" FontWeight="Bold" Foreground="#E65100" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="1" Background="#E8F5E9" CornerRadius="6" Padding="8,6" BorderBrush="#A5D6A7" BorderThickness="1" Margin="6,0,0,0">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <TextBlock Text="Monitoring Active For:" FontSize="10" Foreground="#1B5E20"/>
+                                            <TextBlock x:Name="RunTimerDisabledIndicator" Text=" (Disabled)" FontSize="10" Foreground="Gray" Visibility="Collapsed"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="TxtMonitoringTimerDisplay" Text="--:--:--" FontSize="16" FontWeight="Bold" Foreground="#1B5E20" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Button Style="{StaticResource GhostBtn}" Click="BtnViewParticipants_Click" Margin="0,15,0,0" HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                     <materialDesign:PackIcon Kind="AccountMultipleOutline" Width="14" Height="14" Margin="0,0,4,0"/>
                                     <TextBlock Text="Participants"/>
                                 </StackPanel>
                             </Button>
-
-                            <Border Grid.Column="2" Background="#FFF3E0" CornerRadius="6" Padding="8,6" BorderBrush="#FFCC80" BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="Countdown" FontSize="10" Foreground="#E65100"/>
-                                    <TextBlock x:Name="TxtCountdownDisplay" Text="--:--" FontSize="16" FontWeight="Bold" Foreground="#E65100"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Column="4" Background="#E8F5E9" CornerRadius="6" Padding="8,6" BorderBrush="#A5D6A7" BorderThickness="1">
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="Monitoring Timer" FontSize="10" Foreground="#1B5E20"/>
-                                        <TextBlock x:Name="RunTimerDisabledIndicator" Text=" (Disabled)" FontSize="10" Foreground="Gray" Visibility="Collapsed"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="TxtMonitoringTimerDisplay" Text="--:--:--" FontSize="16" FontWeight="Bold" Foreground="#1B5E20"/>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

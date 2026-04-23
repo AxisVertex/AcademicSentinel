@@ -169,6 +169,9 @@ namespace AcademicSentinel.Client.Views.IMC
             if (FindName("RunTimerDisabledIndicator") is TextBlock timerDisabledIndicator)
                 timerDisabledIndicator.Visibility = isTimerDisabled ? Visibility.Visible : Visibility.Collapsed;
 
+            if (FindName("CountdownDisabledIndicator") is TextBlock countdownDisabledIndicator)
+                countdownDisabledIndicator.Visibility = isTimerDisabled ? Visibility.Visible : Visibility.Collapsed;
+
             if (FindName("TxtCountdownDisplay") is TextBlock countdownDisplay)
                 countdownDisplay.Visibility = isTimerDisabled ? Visibility.Collapsed : Visibility.Visible;
 
@@ -581,8 +584,11 @@ namespace AcademicSentinel.Client.Views.IMC
                     targetStudent.HasViolation = true;
                     _studentsWithViolations.Add(studentId);
 
-                    CriticalAlertBanner.Visibility = Visibility.Visible;
-                    TxtCriticalAlertMessage.Text = $"🚨 CRITICAL SECURITY ALERT: {targetStudent.Name} is using a restricted hardware environment!";
+                    if (FindName("CriticalAlertBanner") is Border criticalAlertBanner)
+                        criticalAlertBanner.Visibility = Visibility.Visible;
+
+                    if (FindName("TxtCriticalAlertMessage") is TextBlock criticalAlertMessage)
+                        criticalAlertMessage.Text = $"🚨 CRITICAL SECURITY ALERT: {targetStudent.Name} is using a restricted hardware environment!";
                 }
 
                 _studentsView.Refresh();
@@ -767,16 +773,26 @@ namespace AcademicSentinel.Client.Views.IMC
             if (_selectedStudent != null)
             {
                 _selectedStudentId = _selectedStudent.StudentId;
-                RightDetailPanel.Visibility = Visibility.Visible;
+                if (FindName("RightDetailPanel") is Border rightDetailPanel)
+                    rightDetailPanel.Visibility = Visibility.Visible;
                 StudentDetailPanel.DataContext = _selectedStudent;
 
                 TxtSelectedName.Text = _selectedStudent.Name;
                 TxtSelectedStatus.Text = _selectedStudent.Status.ToUpper();
                 SelectedStatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(_selectedStudent.StatusColor));
-                TxtAlertCount.Text = _selectedStudent.ViolationCount.ToString();
+                var specificLogs = _studentLogs.TryGetValue(_selectedStudent.StudentId, out var logs)
+                    ? logs.ToList()
+                    : new List<StudentMonitoringEvent>();
 
-                TxtRiskLevel.Text = _selectedStudent.ViolationCount > 3 ? "DANGER" : (_selectedStudent.ViolationCount > 0 ? "WARNING" : "SAFE");
-                TxtRiskLevel.Foreground = _selectedStudent.ViolationCount > 3 ? Brushes.Red : (_selectedStudent.ViolationCount > 0 ? Brushes.Orange : Brushes.Green);
+                TxtAlertCount.Text = specificLogs.Count.ToString();
+
+                var totalRiskScore = specificLogs.Sum(x => Math.Max(0, x.SeverityScore));
+                string riskText = "SAFE";
+                if (totalRiskScore >= 50) riskText = "CHEATING";
+                else if (totalRiskScore >= 20) riskText = "SUSPICIOUS";
+
+                TxtRiskLevel.Text = riskText;
+                TxtRiskLevel.Foreground = totalRiskScore >= 50 ? Brushes.Red : (totalRiskScore >= 20 ? Brushes.Orange : Brushes.Green);
 
                 TxtLogHeader.Text = $"Logs: {_selectedStudent.Name}";
                 ApplyAllFilters();
@@ -801,12 +817,14 @@ namespace AcademicSentinel.Client.Views.IMC
         {
             CollapseDetailPanel();
             LogFeedItemsControl.ItemsSource = _logsView;
+            _selectedStudentId = null;
             ApplyAllFilters();
         }
 
         private void CollapseDetailPanel()
         {
-            RightDetailPanel.Visibility = Visibility.Collapsed;
+            if (FindName("RightDetailPanel") is Border rightDetailPanel)
+                rightDetailPanel.Visibility = Visibility.Collapsed;
             StudentDetailPanel.DataContext = null;
             _selectedStudent = null;
             _selectedStudentId = null;
@@ -821,7 +839,9 @@ namespace AcademicSentinel.Client.Views.IMC
 
         private void UpdateDetailPanelForIncomingViolation(int studentId)
         {
-            if (RightDetailPanel.Visibility != Visibility.Visible || _selectedStudentId != studentId)
+            if (FindName("RightDetailPanel") is not Border rightDetailPanel
+                || rightDetailPanel.Visibility != Visibility.Visible
+                || _selectedStudentId != studentId)
                 return;
 
             Dispatcher.Invoke(() =>
@@ -836,8 +856,12 @@ namespace AcademicSentinel.Client.Views.IMC
                 TxtAlertCount.Text = specificLogs.Count.ToString();
 
                 var totalRiskScore = specificLogs.Sum(x => Math.Max(0, x.SeverityScore));
-                TxtRiskLevel.Text = totalRiskScore > 6 ? "DANGER" : (totalRiskScore > 0 ? "WARNING" : "SAFE");
-                TxtRiskLevel.Foreground = totalRiskScore > 6 ? Brushes.Red : (totalRiskScore > 0 ? Brushes.Orange : Brushes.Green);
+                string riskText = "SAFE";
+                if (totalRiskScore >= 50) riskText = "CHEATING";
+                else if (totalRiskScore >= 20) riskText = "SUSPICIOUS";
+
+                TxtRiskLevel.Text = riskText;
+                TxtRiskLevel.Foreground = totalRiskScore >= 50 ? Brushes.Red : (totalRiskScore >= 20 ? Brushes.Orange : Brushes.Green);
             });
         }
 
@@ -1046,7 +1070,8 @@ namespace AcademicSentinel.Client.Views.IMC
 
         private void BtnDismissCriticalAlert_Click(object sender, RoutedEventArgs e)
         {
-            CriticalAlertBanner.Visibility = Visibility.Collapsed;
+            if (FindName("CriticalAlertBanner") is Border criticalAlertBanner)
+                criticalAlertBanner.Visibility = Visibility.Collapsed;
         }
 
         // ======================== MOCK DATA INJECTOR ========================

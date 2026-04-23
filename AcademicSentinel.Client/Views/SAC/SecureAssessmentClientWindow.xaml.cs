@@ -301,6 +301,12 @@ namespace AcademicSentinel.Client.Views.SAC
                 {
                     var monitoringState = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
 
+                    if (_detectorRuntime?.IsPaused == true && monitoringState)
+                    {
+                        UpdateCompactCountdown();
+                        return;
+                    }
+
                     // Keep COUNTDOWN state stable until countdown ends.
                     if (_monitoringCountdownEndsAt.HasValue && DateTime.Now < _monitoringCountdownEndsAt.Value && !monitoringState)
                     {
@@ -1005,6 +1011,29 @@ namespace AcademicSentinel.Client.Views.SAC
 
         private void UpdateCompactCountdown()
         {
+            if (_detectorRuntime?.IsPaused == true && !_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
+            {
+                TxtMonitoringStatus.Text = "Paused (Awaiting Instructor)";
+                TxtMonitoringStatus.Foreground = Brushes.Orange;
+
+                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                {
+                    compactStatus.Text = "Monitoring: PAUSED";
+                    compactStatus.Foreground = Brushes.Orange;
+                }
+            }
+            else if (!_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
+            {
+                TxtMonitoringStatus.Text = "ACTIVE";
+                TxtMonitoringStatus.Foreground = Brushes.LimeGreen;
+
+                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                {
+                    compactStatus.Text = "Monitoring: ACTIVE";
+                    compactStatus.Foreground = Brushes.LimeGreen;
+                }
+            }
+
             if (_monitoringCountdownEndsAt.HasValue)
             {
                 var countdownLeft = _monitoringCountdownEndsAt.Value - DateTime.Now;

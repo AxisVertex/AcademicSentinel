@@ -16,7 +16,53 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
             lock (_syncRoot)
             {
-                newEvent.SeverityScore = ResolveSeverityScore(newEvent.EventType);
+                var normalized = (newEvent.EventType ?? string.Empty).Trim().ToUpperInvariant();
+
+                switch (normalized)
+                {
+                    case "RTFM":
+                    case "ALT_TAB":
+                    case "WINDOW_SWITCH":
+                    case "FOCUS":
+                        newEvent.SeverityScore = 10;
+                        break;
+                    case "IDLE":
+                    case "INACTIVITY":
+                        newEvent.SeverityScore = 10;
+                        break;
+                    case "CSAD":
+                    case "CLIPBOARD":
+                    case "COPY":
+                    case "PASTE":
+                    case "SCREENSHOT":
+                    case "PRINTSCREEN":
+                        newEvent.SeverityScore = 20;
+                        break;
+                    case "PBD":
+                        newEvent.SeverityScore = 30;
+                        break;
+                    case "VAC":
+                    case "HAS":
+                    case "VM":
+                    case "REMOTE":
+                    case "PROCESS":
+                        newEvent.SeverityScore = 40;
+                        break;
+                    default:
+                        if (normalized.Contains("RTFM") || normalized.Contains("ALT_TAB") || normalized.Contains("WINDOW_SWITCH") || normalized.Contains("FOCUS"))
+                            newEvent.SeverityScore = 10;
+                        else if (normalized.Contains("IDLE") || normalized.Contains("INACTIVITY"))
+                            newEvent.SeverityScore = 10;
+                        else if (normalized.Contains("CSAD") || normalized.Contains("CLIPBOARD") || normalized.Contains("COPY") || normalized.Contains("PASTE") || normalized.Contains("SCREENSHOT") || normalized.Contains("PRINTSCREEN"))
+                            newEvent.SeverityScore = 20;
+                        else if (normalized.Contains("PBD"))
+                            newEvent.SeverityScore = 30;
+                        else if (normalized.Contains("VAC") || normalized.Contains("HAS") || normalized.Contains("VM") || normalized.Contains("REMOTE") || normalized.Contains("PROCESS"))
+                            newEvent.SeverityScore = 40;
+                        else
+                            newEvent.SeverityScore = 10;
+                        break;
+                }
 
                 _cumulativeScore += Math.Max(0, newEvent.SeverityScore);
 
@@ -30,24 +76,6 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
                     HasThresholdChanged = previousLevel != _currentLevel
                 };
             }
-        }
-
-        private static int ResolveSeverityScore(string eventType)
-        {
-            var normalized = (eventType ?? string.Empty).Trim().ToUpperInvariant();
-
-            return normalized switch
-            {
-                "RTFM" or "ALT_TAB" or "WINDOW_SWITCH" or "FOCUS" => 10,
-                "IDLE" or "INACTIVITY" => 10,
-                "CSAD" or "CLIPBOARD" or "COPY" or "PASTE" or "SCREENSHOT" or "PRINTSCREEN" => 20,
-                "VAC" or "HAS" or "PBD" or "VM" or "REMOTE" or "PROCESS" => 40,
-                _ when normalized.Contains("RTFM") || normalized.Contains("ALT_TAB") || normalized.Contains("WINDOW_SWITCH") || normalized.Contains("FOCUS") => 10,
-                _ when normalized.Contains("IDLE") || normalized.Contains("INACTIVITY") => 10,
-                _ when normalized.Contains("CSAD") || normalized.Contains("CLIPBOARD") || normalized.Contains("COPY") || normalized.Contains("PASTE") || normalized.Contains("SCREENSHOT") || normalized.Contains("PRINTSCREEN") => 20,
-                _ when normalized.Contains("VAC") || normalized.Contains("HAS") || normalized.Contains("PBD") || normalized.Contains("VM") || normalized.Contains("REMOTE") || normalized.Contains("PROCESS") => 40,
-                _ => 10
-            };
         }
 
         private static RiskLevel ResolveRiskLevel(int cumulativeScore)
