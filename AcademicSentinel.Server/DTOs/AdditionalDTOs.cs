@@ -64,6 +64,8 @@ public class MonitoringEventDto
     public string EventType { get; set; } = string.Empty; // ALT_TAB, PROCESS, CLIPBOARD, IDLE, VM, etc.
     public int SeverityScore { get; set; }
     public string Description { get; set; } = string.Empty;
+    public int CurrentScore { get; set; }
+    public string CurrentLevel { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
 

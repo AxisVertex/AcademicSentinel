@@ -11,6 +11,7 @@ namespace AcademicSentinel.Client.Services.SAC
         private readonly DetectorRuntimeOptions _options;
         private readonly BehavioralMonitoringService _behavioralMonitoringService;
         private readonly EnvironmentIntegrityService _environmentIntegrityService;
+        private readonly DecisionEngineService _decisionEngineService;
         private bool _isStarted;
         private bool _preFlightCompleted;
         public bool IsLoggingEnabled { get; private set; } = true;
@@ -34,6 +35,7 @@ namespace AcademicSentinel.Client.Services.SAC
 
             _behavioralMonitoringService = new BehavioralMonitoringService(settings, _options.BlacklistedProcessNames);
             _environmentIntegrityService = new EnvironmentIntegrityService();
+            _decisionEngineService = new DecisionEngineService();
         }
 
         public IReadOnlyList<DetectorFinding> Poll(bool isWindowActive)
@@ -41,7 +43,7 @@ namespace AcademicSentinel.Client.Services.SAC
             if (!_isStarted)
                 return Array.Empty<DetectorFinding>();
 
-            return MapFindings(_behavioralMonitoringService.Poll(isWindowActive));
+            return EvaluateAndMapFindings(_behavioralMonitoringService.Poll(isWindowActive));
         }
 
         public IReadOnlyList<DetectorFinding> RunStartupChecks()
@@ -54,7 +56,7 @@ namespace AcademicSentinel.Client.Services.SAC
             if (!_isStarted)
                 return Array.Empty<DetectorFinding>();
 
-            return MapFindings(_behavioralMonitoringService.Poll(false));
+            return EvaluateAndMapFindings(_behavioralMonitoringService.Poll(false));
         }
 
         public async Task SetMonitoringEnabledAsync(bool enabled)
@@ -114,14 +116,24 @@ namespace AcademicSentinel.Client.Services.SAC
             await Task.CompletedTask;
         }
 
-        private static IReadOnlyList<DetectorFinding> MapFindings(IReadOnlyList<MonitoringDetectionEvent> events)
+        private IReadOnlyList<DetectorFinding> EvaluateAndMapFindings(IReadOnlyList<MonitoringDetectionEvent> events)
         {
             if (events == null || events.Count == 0)
                 return Array.Empty<DetectorFinding>();
 
-            return events
-                .Select(e => new DetectorFinding(e.EventType, e.SeverityScore, e.Description))
-                .ToList();
+            var mapped = new List<DetectorFinding>(events.Count);
+            foreach (var rawEvent in events)
+            {
+                var assessment = _decisionEngineService.EvaluateEvent(rawEvent);
+                var severityScore = rawEvent.SeverityScore;
+                var description = string.IsNullOrWhiteSpace(rawEvent.Description)
+                    ? $"CumulativeScore={assessment.CurrentScore}; RiskLevel={assessment.CurrentLevel}"
+                    : $"{rawEvent.Description} | CumulativeScore={assessment.CurrentScore}; RiskLevel={assessment.CurrentLevel}";
+
+                mapped.Add(new DetectorFinding(rawEvent.EventType, severityScore, description));
+            }
+
+            return mapped;
         }
     }
 

@@ -2,7 +2,7 @@ using System;
 
 namespace AcademicSentinel.Client.Services.SAC.Models
 {
-    internal sealed class MonitoringDetectionEvent
+    public sealed class MonitoringDetectionEvent
     {
         public string EventType { get; set; } = string.Empty;
         public int SeverityScore { get; set; }

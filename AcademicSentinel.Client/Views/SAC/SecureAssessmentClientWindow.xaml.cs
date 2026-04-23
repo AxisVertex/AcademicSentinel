@@ -413,6 +413,8 @@ namespace AcademicSentinel.Client.Views.SAC
                     EventType = eventType,
                     SeverityScore = severityScore,
                     Description = description,
+                    CurrentScore = ParseCurrentScore(description),
+                    CurrentLevel = ParseCurrentLevel(description),
                     Timestamp = now
                 };
 
@@ -446,6 +448,38 @@ namespace AcademicSentinel.Client.Views.SAC
                 _pendingViolationQueue.Dequeue();
 
             _pendingViolationQueue.Enqueue(payload);
+        }
+
+        private static int ParseCurrentScore(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+                return 0;
+
+            const string marker = "CumulativeScore=";
+            int start = description.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+                return 0;
+
+            start += marker.Length;
+            int end = description.IndexOf(';', start);
+            var value = end >= 0 ? description.Substring(start, end - start) : description.Substring(start);
+            return int.TryParse(value.Trim(), out var parsed) ? parsed : 0;
+        }
+
+        private static string ParseCurrentLevel(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+                return string.Empty;
+
+            const string marker = "RiskLevel=";
+            int start = description.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+                return string.Empty;
+
+            start += marker.Length;
+            int end = description.IndexOf(';', start);
+            var value = end >= 0 ? description.Substring(start, end - start) : description.Substring(start);
+            return value.Trim();
         }
 
         private async Task FlushPendingViolationsAsync()
@@ -1108,6 +1142,8 @@ namespace AcademicSentinel.Client.Views.SAC
             public string EventType { get; set; } = string.Empty;
             public int SeverityScore { get; set; }
             public string Description { get; set; } = string.Empty;
+            public int CurrentScore { get; set; }
+            public string CurrentLevel { get; set; } = string.Empty;
             public DateTime Timestamp { get; set; } = DateTime.UtcNow;
         }
     }
