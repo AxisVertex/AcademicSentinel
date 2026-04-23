@@ -109,8 +109,8 @@
                       AlternatingRowBackground="#FAFAFA">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Violation Category" Binding="{Binding CategoryName}" Width="*" />
-                    <DataGridTextColumn Header="Occurrences" Binding="{Binding Count}" Width="130" />
-                    <DataGridTextColumn Header="Total Penalty Score" Binding="{Binding TotalScore}" Width="150" />
+                    <DataGridTextColumn Header="Occurrences" Binding="{Binding Count}" Width="Auto" />
+                    <DataGridTextColumn Header="Total Penalty Score" Binding="{Binding TotalScore}" Width="Auto" />
                 </DataGrid.Columns>
             </DataGrid>
 

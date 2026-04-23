@@ -62,6 +62,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private readonly HashSet<int> _permanentlyDismissedStudents = new HashSet<int>();
         private readonly HashSet<int> _studentsWithViolations = new HashSet<int>();
         private readonly ConcurrentDictionary<int, ObservableCollection<StudentMonitoringEvent>> _studentLogs = new();
+        private readonly List<IDisposable> _hubSubscriptions = new();
         private int? _selectedStudentId;
 
         public ObservableCollection<LiveStudentStatus> ActiveStudents { get; set; }
@@ -150,16 +151,6 @@ namespace AcademicSentinel.Client.Views.IMC
                 return matchesUser && matchesCategory;
             };
             _logsView.Refresh();
-        }
-
-        private void BtnShowGlobalLogs_Click(object sender, RoutedEventArgs e)
-        {
-            if (EnsureSessionNotEnded()) return;
-            _selectedStudent = null;
-            TxtLogHeader.Text = "Global Log Feed";
-            TxtSelectedName.Text = "Select a Student";
-            LogFeedItemsControl.ItemsSource = _logsView;
-            ApplyAllFilters();
         }
 
         private void InitializeTimerIndicatorState()
@@ -446,15 +437,15 @@ namespace AcademicSentinel.Client.Views.IMC
                 .WithUrl($"{ApiEndpoints.BaseUrl}/monitoringHub", o => o.AccessTokenProvider = () => Task.FromResult(SessionManager.JwtToken))
                 .WithAutomaticReconnect().Build();
 
-            _hubConnection.On<int>("StudentJoined", (id) => Dispatcher.Invoke(() => {
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentJoined", (id) => Dispatcher.Invoke(() => {
                 if (_permanentlyDismissedStudents.Contains(id))
                     return;
 
                 _safelyLeftStudentIds.Remove(id);
                 _ = LoadParticipantsFromServerAsync();
-            }));
+            })));
 
-            _hubConnection.On<int>("StudentDisconnected", (id) => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentDisconnected", (id) => Dispatcher.Invoke(() =>
             {
                 if (_safelyLeftStudentIds.Contains(id) || _permanentlyDismissedStudents.Contains(id))
                     return;
@@ -476,9 +467,9 @@ namespace AcademicSentinel.Client.Views.IMC
                 _studentsView.Refresh();
 
                 _ = LoadParticipantsFromServerAsync();
-            }));
+            })));
 
-            _hubConnection.On<ViolationAlertPayload>("ViolationDetected", payload => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<ViolationAlertPayload>("ViolationDetected", payload => _ = Dispatcher.InvokeAsync(() =>
             {
                 if (payload == null) return;
 
@@ -504,9 +495,9 @@ namespace AcademicSentinel.Client.Views.IMC
                 LogActivity(email, "VIOLATION", message, "#D32F2F");
                 UpdateDetailPanelForIncomingViolation(payload.StudentId);
                 _studentsView.Refresh();
-            }));
+            })));
 
-            _hubConnection.On<int, string, int, DateTime>("ViolationDetected", (studentId, eventType, severityScore, timestamp) => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int, string, int, DateTime>("ViolationDetected", (studentId, eventType, severityScore, timestamp) => _ = Dispatcher.InvokeAsync(() =>
             {
                 if (_permanentlyDismissedStudents.Contains(studentId))
                     return;
@@ -527,9 +518,9 @@ namespace AcademicSentinel.Client.Views.IMC
                 LogActivity(email, "VIOLATION", eventType, "#D32F2F");
                 UpdateDetailPanelForIncomingViolation(studentId);
                 _studentsView.Refresh();
-            }));
+            })));
 
-            _hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
             {
                 if (_permanentlyDismissedStudents.Contains(studentId))
                     return;
@@ -545,9 +536,9 @@ namespace AcademicSentinel.Client.Views.IMC
 
                 LogActivity(targetStudent.Email, "LEAVE_REQ", "Student requested leave approval.", "#FF9800");
                 _studentsView.Refresh();
-            }));
+            })));
 
-            _hubConnection.On<int>("StudentSafelyLeft", studentId => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentSafelyLeft", studentId => Dispatcher.Invoke(() =>
             {
                 _permanentlyDismissedStudents.Add(studentId);
                 _safelyLeftStudentIds.Add(studentId);
@@ -566,9 +557,9 @@ namespace AcademicSentinel.Client.Views.IMC
                     _studentsView.Refresh();
                     UpdateParticipantCount();
                 }
-            }));
+            })));
 
-            _hubConnection.On<int, bool, bool>("ReceiveHardwareStateUpdate", (studentId, isVm, isRemote) => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int, bool, bool>("ReceiveHardwareStateUpdate", (studentId, isVm, isRemote) => Dispatcher.Invoke(() =>
             {
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent == null)
@@ -592,7 +583,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 }
 
                 _studentsView.Refresh();
-            }));
+            })));
 
             try { await _hubConnection.StartAsync(); await _hubConnection.InvokeAsync("JoinRoom", _roomId.ToString()); }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
@@ -792,7 +783,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 else if (totalRiskScore >= 20) riskText = "SUSPICIOUS";
 
                 TxtRiskLevel.Text = riskText;
-                TxtRiskLevel.Foreground = totalRiskScore >= 50 ? Brushes.Red : (totalRiskScore >= 20 ? Brushes.Orange : Brushes.Green);
+                TxtRiskLevel.Foreground = totalRiskScore >= 50 ? Brushes.Red : (totalRiskScore >= 20 ? Brushes.Goldenrod : Brushes.LimeGreen);
 
                 TxtLogHeader.Text = $"Logs: {_selectedStudent.Name}";
                 ApplyAllFilters();
@@ -834,7 +825,7 @@ namespace AcademicSentinel.Client.Views.IMC
             SelectedStatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9E9E9E"));
             TxtAlertCount.Text = "0";
             TxtRiskLevel.Text = "SAFE";
-            TxtRiskLevel.Foreground = Brushes.Green;
+            TxtRiskLevel.Foreground = Brushes.LimeGreen;
         }
 
         private void UpdateDetailPanelForIncomingViolation(int studentId)
@@ -844,7 +835,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 || _selectedStudentId != studentId)
                 return;
 
-            Dispatcher.Invoke(() =>
+            _ = Dispatcher.InvokeAsync(() =>
             {
                 if (_selectedStudent == null)
                     return;
@@ -861,7 +852,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 else if (totalRiskScore >= 20) riskText = "SUSPICIOUS";
 
                 TxtRiskLevel.Text = riskText;
-                TxtRiskLevel.Foreground = totalRiskScore >= 50 ? Brushes.Red : (totalRiskScore >= 20 ? Brushes.Orange : Brushes.Green);
+                TxtRiskLevel.Foreground = totalRiskScore >= 50 ? Brushes.Red : (totalRiskScore >= 20 ? Brushes.Goldenrod : Brushes.LimeGreen);
             });
         }
 
@@ -891,7 +882,11 @@ namespace AcademicSentinel.Client.Views.IMC
                 }
 
                 LogActivity(_selectedStudent.Email, "KICKED", "Instructor removed student from room.", "#D32F2F");
-                BtnShowGlobalLogs_Click(null, null);
+                _selectedStudent = null;
+                TxtLogHeader.Text = "Global Log Feed";
+                TxtSelectedName.Text = "Select a Student";
+                LogFeedItemsControl.ItemsSource = _logsView;
+                ApplyAllFilters();
                 await LoadParticipantsFromServerAsync();
             }
             catch (Exception ex)
@@ -1060,6 +1055,23 @@ namespace AcademicSentinel.Client.Views.IMC
             }
             _participantsRefreshTimer?.Stop();
             base.OnClosing(e);
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            foreach (var subscription in _hubSubscriptions)
+            {
+                subscription.Dispose();
+            }
+            _hubSubscriptions.Clear();
+
+            if (_hubConnection != null)
+            {
+                _ = _hubConnection.DisposeAsync();
+                _hubConnection = null;
+            }
+
+            base.OnClosed(e);
         }
 
         private void StudentDropdown_Click(object sender, RoutedEventArgs e)

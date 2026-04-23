@@ -176,14 +176,13 @@ public class MonitoringHub : Hub
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdString != null)
+        if (userIdString != null && int.TryParse(userIdString, out var studentId))
         {
-            int studentId = int.Parse(userIdString);
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-            using (var scope = _scopeFactory.CreateScope())
+            try
             {
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
                 var hasCompletedSessionParticipant = await db.SessionParticipants
                     .AnyAsync(p => p.StudentId == studentId && p.ConnectionStatus == "Completed");
 
@@ -212,6 +211,10 @@ public class MonitoringHub : Hub
                     // Instantly alert the Teacher's Dashboard (IMC)!
                     await Clients.Group(participant.RoomId.ToString()).SendAsync("StudentDisconnected", studentId);
                 }
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // best-effort disconnect update under concurrent drops
             }
         }
 
