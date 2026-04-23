@@ -88,7 +88,7 @@
                 <Border Grid.Column="2" Background="{StaticResource FEULightGrayBrush}" CornerRadius="8" Padding="14">
                     <StackPanel>
                         <TextBlock Text="Risk Status" FontSize="12" Foreground="{StaticResource FEUSubTextBrush}" />
-                        <TextBlock Text="{Binding RiskLevelText}" FontSize="30" FontWeight="Bold" Foreground="{StaticResource FEUGreenBrush}" />
+                        <TextBlock Text="{Binding RiskLevelText}" FontSize="30" FontWeight="Bold" Foreground="{Binding RiskLevelColorHex}" />
                     </StackPanel>
                 </Border>
             </Grid>

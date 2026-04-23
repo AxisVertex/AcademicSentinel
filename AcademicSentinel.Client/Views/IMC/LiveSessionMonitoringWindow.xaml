@@ -242,42 +242,33 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="8"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <Border Grid.Column="0" Background="#FFF3E0" CornerRadius="6" Padding="8,6" BorderBrush="#FFCC80" BorderThickness="1">
+                            <Button Grid.Column="0" Style="{StaticResource GhostBtn}" Click="BtnViewParticipants_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="AccountMultipleOutline" Width="14" Height="14" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Participants"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Border Grid.Column="2" Background="#FFF3E0" CornerRadius="6" Padding="8,6" BorderBrush="#FFCC80" BorderThickness="1">
                                 <StackPanel>
                                     <TextBlock Text="Countdown" FontSize="10" Foreground="#E65100"/>
                                     <TextBlock x:Name="TxtCountdownDisplay" Text="--:--" FontSize="16" FontWeight="Bold" Foreground="#E65100"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Grid.Column="2" Background="#E8F5E9" CornerRadius="6" Padding="8,6" BorderBrush="#A5D6A7" BorderThickness="1">
+                            <Border Grid.Column="4" Background="#E8F5E9" CornerRadius="6" Padding="8,6" BorderBrush="#A5D6A7" BorderThickness="1">
                                 <StackPanel>
-                                    <TextBlock Text="Monitoring Timer" FontSize="10" Foreground="#1B5E20"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Monitoring Timer" FontSize="10" Foreground="#1B5E20"/>
+                                        <TextBlock x:Name="RunTimerDisabledIndicator" Text=" (Disabled)" FontSize="10" Foreground="Gray" Visibility="Collapsed"/>
+                                    </StackPanel>
                                     <TextBlock x:Name="TxtMonitoringTimerDisplay" Text="--:--:--" FontSize="16" FontWeight="Bold" Foreground="#1B5E20"/>
                                 </StackPanel>
                             </Border>
-                        </Grid>
-
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="26*"/>
-                                <ColumnDefinition Width="95*"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="120*"/>
-                            </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" Style="{StaticResource GhostBtn}" Grid.ColumnSpan="2" Click="BtnViewParticipants_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="AccountMultipleOutline" Width="14" Height="14" Margin="0,0,4,0"/>
-                                    <TextBlock Text="Participants"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="BtnSwitchToGlobalLogs" Grid.Column="3" Style="{StaticResource GhostBtn}" Click="BtnShowGlobalLogs_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="ViewHeadline" Width="14" Height="14" Margin="0,0,4,0"/>
-                                    <TextBlock Text="Global Logs"/>
-                                </StackPanel>
-                            </Button>
                         </Grid>
                     </StackPanel>
                 </Border>

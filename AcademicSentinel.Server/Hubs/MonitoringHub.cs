@@ -47,6 +47,24 @@ public class MonitoringHub : Hub
         return Task.FromResult(MonitoringStates.TryGetValue(roomId, out var isActive) && isActive);
     }
 
+    public async Task PauseSessionMonitoring(int roomId)
+    {
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+        if (!string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        await Clients.Group(roomId.ToString()).SendAsync("MonitoringPaused");
+    }
+
+    public async Task ResumeSessionMonitoring(int roomId)
+    {
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+        if (!string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        await Clients.Group(roomId.ToString()).SendAsync("MonitoringResumed");
+    }
+
     public async Task BeginMonitoringCountdown(int roomId, int delaySeconds, int monitoringDurationSeconds)
     {
         var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;

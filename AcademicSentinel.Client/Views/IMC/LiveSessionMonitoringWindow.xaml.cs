@@ -26,6 +26,13 @@ namespace AcademicSentinel.Client.Views.IMC
 {
     public partial class LiveSessionMonitoringWindow : Window
     {
+        private enum MonitoringControlState
+        {
+            NotStarted,
+            Active,
+            Paused
+        }
+
         private HubConnection _hubConnection;
         private int _roomId;
         private int _totalAlerts = 0;
@@ -38,6 +45,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private bool _isEndingFromTimer;
         private DateTime? _monitoringEffectiveStartTime;
         private int _countdownSecondsRemaining;
+        private MonitoringControlState _monitoringControlState = MonitoringControlState.NotStarted;
 
         // Timer Variables
         private DispatcherTimer _sessionTimer;
@@ -95,6 +103,9 @@ namespace AcademicSentinel.Client.Views.IMC
             StudentsItemsControl.ItemsSource = _studentsView;
             LogFeedItemsControl.ItemsSource = _logsView;
 
+            InitializeTimerIndicatorState();
+            SetMonitoringControlButtonState(MonitoringControlState.NotStarted);
+
             _ = LoadParticipantsFromServerAsync();
 
             _participantsRefreshTimer = new DispatcherTimer
@@ -147,7 +158,51 @@ namespace AcademicSentinel.Client.Views.IMC
             _selectedStudent = null;
             TxtLogHeader.Text = "Global Log Feed";
             TxtSelectedName.Text = "Select a Student";
+            LogFeedItemsControl.ItemsSource = _logsView;
             ApplyAllFilters();
+        }
+
+        private void InitializeTimerIndicatorState()
+        {
+            var isTimerDisabled = _monitoringDurationSeconds <= 0;
+
+            if (FindName("RunTimerDisabledIndicator") is TextBlock timerDisabledIndicator)
+                timerDisabledIndicator.Visibility = isTimerDisabled ? Visibility.Visible : Visibility.Collapsed;
+
+            if (FindName("TxtCountdownDisplay") is TextBlock countdownDisplay)
+                countdownDisplay.Visibility = isTimerDisabled ? Visibility.Collapsed : Visibility.Visible;
+
+            if (FindName("TxtMonitoringTimerDisplay") is TextBlock timerDisplay)
+                timerDisplay.Text = isTimerDisabled ? "N/A" : "--:--:--";
+        }
+
+        private void SetMonitoringControlButtonState(MonitoringControlState state)
+        {
+            _monitoringControlState = state;
+
+            if (FindName("TxtStartStopLabel") is not TextBlock label || FindName("StartStopIcon") is not PackIcon icon)
+                return;
+
+            switch (state)
+            {
+                case MonitoringControlState.Active:
+                    label.Text = "Pause Monitoring";
+                    icon.Kind = PackIconKind.Pause;
+                    BtnStartMonitoring.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D32F2F"));
+                    break;
+
+                case MonitoringControlState.Paused:
+                    label.Text = "Resume Monitoring";
+                    icon.Kind = PackIconKind.Play;
+                    BtnStartMonitoring.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF9800"));
+                    break;
+
+                default:
+                    label.Text = "Start Session Monitoring";
+                    icon.Kind = PackIconKind.Play;
+                    BtnStartMonitoring.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1B5E20"));
+                    break;
+            }
         }
 
         // ======================== SESSION & SIGNALR ========================
@@ -156,18 +211,23 @@ namespace AcademicSentinel.Client.Views.IMC
         {
             if (EnsureSessionNotEnded()) return;
 
-            var startStopLabel = FindName("TxtStartStopLabel") as TextBlock;
-            var startStopIcon = FindName("StartStopIcon") as PackIcon;
             var monitoringState = FindName("TxtMonitoringState") as TextBlock;
 
-            if (_isMonitoringStarted)
+            if (_monitoringControlState == MonitoringControlState.Active)
             {
-                await StopMonitoringAsync();
+                await PauseMonitoringAsync();
+                return;
+            }
+
+            if (_monitoringControlState == MonitoringControlState.Paused)
+            {
+                await ResumeMonitoringAsync();
                 return;
             }
 
             BtnStartMonitoring.IsEnabled = false;
-            if (startStopLabel != null) startStopLabel.Text = "Starting...";
+            if (FindName("TxtStartStopLabel") is TextBlock startLabel)
+                startLabel.Text = "Starting...";
             try
             {
                 if (_currentSessionId <= 0)
@@ -178,7 +238,7 @@ namespace AcademicSentinel.Client.Views.IMC
                     if (!response.IsSuccessStatusCode)
                     {
                         BtnStartMonitoring.IsEnabled = true;
-                        if (startStopLabel != null) startStopLabel.Text = "Start Session Monitoring";
+                        SetMonitoringControlButtonState(MonitoringControlState.NotStarted);
                         MessageBox.Show("Failed to start session.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
@@ -209,8 +269,7 @@ namespace AcademicSentinel.Client.Views.IMC
                     monitoringState.Text = _startDelaySeconds > 0
                         ? $"Monitoring: Countdown (Session #{_currentSessionId})"
                         : $"Monitoring: Active (Session #{_currentSessionId})";
-                if (startStopLabel != null) startStopLabel.Text = "Stop Monitoring";
-                if (startStopIcon != null) startStopIcon.Kind = PackIconKind.Stop;
+                SetMonitoringControlButtonState(MonitoringControlState.Active);
                 BtnStartMonitoring.IsEnabled = true;
                 TimerPanel.Visibility = Visibility.Visible; // Show the timer
                 StartSessionTimer(); // Start the clock!
@@ -219,35 +278,45 @@ namespace AcademicSentinel.Client.Views.IMC
             }
             catch (Exception ex)
             {
-                if (startStopLabel != null) startStopLabel.Text = "Start Session Monitoring";
-                if (startStopIcon != null) startStopIcon.Kind = PackIconKind.Play;
+                SetMonitoringControlButtonState(MonitoringControlState.NotStarted);
                 BtnStartMonitoring.IsEnabled = true;
                 MessageBox.Show(ex.Message);
             }
         }
 
-        private async Task StopMonitoringAsync()
+        private async Task PauseMonitoringAsync()
         {
             if (EnsureSessionNotEnded()) return;
-
-            if (MessageBox.Show("Stop monitoring for this session?", "Confirm", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
-                return;
 
             if (_currentSessionId > 0)
             {
                 if (_hubConnection != null)
                 {
-                        await _hubConnection.InvokeAsync("SetMonitoringState", _roomId, false);
+                    await _hubConnection.InvokeAsync("PauseSessionMonitoring", _roomId);
                 }
             }
 
             _isMonitoringStarted = false;
-            if (FindName("TxtMonitoringState") is TextBlock monitoringState) monitoringState.Text = "Monitoring: Inactive";
-            if (FindName("TxtStartStopLabel") is TextBlock startStopLabel) startStopLabel.Text = "Start Session Monitoring";
-            if (FindName("StartStopIcon") is PackIcon startStopIcon) startStopIcon.Kind = PackIconKind.Play;
-            _sessionTimer?.Stop();
-            TimerPanel.Visibility = Visibility.Collapsed;
-            LogActivity("SYSTEM", "STOPPED", "Monitoring stopped. Session remains active.", "#D32F2F");
+            if (FindName("TxtMonitoringState") is TextBlock monitoringState)
+                monitoringState.Text = $"Monitoring: Paused (Session #{_currentSessionId})";
+            SetMonitoringControlButtonState(MonitoringControlState.Paused);
+            LogActivity("SYSTEM", "PAUSED", "Monitoring paused. Session remains active and soft lock is enforced.", "#FF9800");
+        }
+
+        private async Task ResumeMonitoringAsync()
+        {
+            if (EnsureSessionNotEnded()) return;
+
+            if (_currentSessionId > 0 && _hubConnection != null)
+            {
+                await _hubConnection.InvokeAsync("ResumeSessionMonitoring", _roomId);
+            }
+
+            _isMonitoringStarted = true;
+            if (FindName("TxtMonitoringState") is TextBlock monitoringState)
+                monitoringState.Text = $"Monitoring: Active (Session #{_currentSessionId})";
+            SetMonitoringControlButtonState(MonitoringControlState.Active);
+            LogActivity("SYSTEM", "RESUMED", "Monitoring resumed.", "#1B5E20");
         }
 
         // NEW: Timer Method
@@ -312,28 +381,25 @@ namespace AcademicSentinel.Client.Views.IMC
                     }
                     else
                     {
-                        await Dispatcher.InvokeAsync(async () => await StopMonitoringOnlyAsync());
+                        await Dispatcher.InvokeAsync(async () => await PauseMonitoringOnlyAsync());
                     }
                 }
             };
             _sessionTimer.Start();
         }
 
-        private async Task StopMonitoringOnlyAsync()
+        private async Task PauseMonitoringOnlyAsync()
         {
             if (_hubConnection != null)
             {
-                await _hubConnection.InvokeAsync("SetMonitoringState", _roomId, false);
+                await _hubConnection.InvokeAsync("PauseSessionMonitoring", _roomId);
             }
 
             _isMonitoringStarted = false;
-            if (FindName("TxtMonitoringState") is TextBlock monitoringState) monitoringState.Text = $"Monitoring: Stopped (Session #{_currentSessionId})";
-            if (FindName("TxtStartStopLabel") is TextBlock startStopLabel) startStopLabel.Text = "Start Session Monitoring";
-            if (FindName("StartStopIcon") is PackIcon startStopIcon) startStopIcon.Kind = PackIconKind.Play;
-            if (FindName("TxtCountdownDisplay") is TextBlock countdownDisplay) countdownDisplay.Text = "00:00";
-            if (FindName("TxtMonitoringTimerDisplay") is TextBlock timerDisplay) timerDisplay.Text = "00:00:00";
-            TimerPanel.Visibility = Visibility.Collapsed;
-            LogActivity("SYSTEM", "STOPPED", "Monitoring stopped by timer.", "#D32F2F");
+            if (FindName("TxtMonitoringState") is TextBlock monitoringState)
+                monitoringState.Text = $"Monitoring: Paused (Session #{_currentSessionId})";
+            SetMonitoringControlButtonState(MonitoringControlState.Paused);
+            LogActivity("SYSTEM", "PAUSED", "Monitoring paused by timer. Session remains active and soft lock is enforced.", "#FF9800");
         }
 
         private bool EnsureSessionNotEnded()
@@ -433,6 +499,7 @@ namespace AcademicSentinel.Client.Views.IMC
                     ? payload.EventType
                     : $"{payload.EventType}: {payload.Description}";
                 LogActivity(email, "VIOLATION", message, "#D32F2F");
+                UpdateDetailPanelForIncomingViolation(payload.StudentId);
                 _studentsView.Refresh();
             }));
 
@@ -455,6 +522,7 @@ namespace AcademicSentinel.Client.Views.IMC
 
                 var email = targetStudent?.Email ?? _allParticipants.FirstOrDefault(p => p.StudentId == studentId)?.StudentEmail ?? $"Student #{studentId}";
                 LogActivity(email, "VIOLATION", eventType, "#D32F2F");
+                UpdateDetailPanelForIncomingViolation(studentId);
                 _studentsView.Refresh();
             }));
 
@@ -732,6 +800,8 @@ namespace AcademicSentinel.Client.Views.IMC
         private void BtnCloseDetailPanel_Click(object sender, RoutedEventArgs e)
         {
             CollapseDetailPanel();
+            LogFeedItemsControl.ItemsSource = _logsView;
+            ApplyAllFilters();
         }
 
         private void CollapseDetailPanel()
@@ -747,6 +817,28 @@ namespace AcademicSentinel.Client.Views.IMC
             TxtAlertCount.Text = "0";
             TxtRiskLevel.Text = "SAFE";
             TxtRiskLevel.Foreground = Brushes.Green;
+        }
+
+        private void UpdateDetailPanelForIncomingViolation(int studentId)
+        {
+            if (RightDetailPanel.Visibility != Visibility.Visible || _selectedStudentId != studentId)
+                return;
+
+            Dispatcher.Invoke(() =>
+            {
+                if (_selectedStudent == null)
+                    return;
+
+                var specificLogs = _studentLogs.TryGetValue(studentId, out var logs)
+                    ? logs.ToList()
+                    : new List<StudentMonitoringEvent>();
+
+                TxtAlertCount.Text = specificLogs.Count.ToString();
+
+                var totalRiskScore = specificLogs.Sum(x => Math.Max(0, x.SeverityScore));
+                TxtRiskLevel.Text = totalRiskScore > 6 ? "DANGER" : (totalRiskScore > 0 ? "WARNING" : "SAFE");
+                TxtRiskLevel.Foreground = totalRiskScore > 6 ? Brushes.Red : (totalRiskScore > 0 ? Brushes.Orange : Brushes.Green);
+            });
         }
 
         private void BtnRemoveFromSession_Click(object sender, RoutedEventArgs e)
@@ -894,6 +986,7 @@ namespace AcademicSentinel.Client.Views.IMC
             _isMonitoringStarted = false;
             _isSessionEnded = true;
             _sessionTimer?.Stop(); // Stop timer
+            SetMonitoringControlButtonState(MonitoringControlState.NotStarted);
             if (FindName("TxtMonitoringState") is TextBlock monitoringState) monitoringState.Text = "Monitoring: Session Ended";
             if (FindName("TxtStartStopLabel") is TextBlock startStopLabel)
             {

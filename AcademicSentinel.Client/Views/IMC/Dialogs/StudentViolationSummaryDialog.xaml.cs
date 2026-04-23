@@ -13,7 +13,9 @@ namespace AcademicSentinel.Client.Views.IMC.Dialogs
 
         public string DialogTitle { get; }
         public int TotalViolationsCount { get; }
+        public int TotalRiskScore { get; }
         public string RiskLevelText { get; }
+        public string RiskLevelColorHex { get; }
         public ObservableCollection<ViolationCategorySummary> ViolationSummaries { get; }
 
         public StudentViolationSummaryDialog(string studentName, int totalRiskScore, IEnumerable<StudentMonitoringEvent> logs)
@@ -33,6 +35,18 @@ namespace AcademicSentinel.Client.Views.IMC.Dialogs
                 .ThenByDescending(x => x.Count)
                 .ThenBy(x => x.CategoryName)
                 .ToList();
+
+            TotalRiskScore = grouped.Sum(x => x.TotalScore);
+
+            (string riskText, string riskColor) = TotalRiskScore switch
+            {
+                < 20 => ($"Safe ({TotalRiskScore} pts)", "#1B5E20"),
+                < 50 => ($"Suspicious ({TotalRiskScore} pts)", "#E65100"),
+                _ => ($"Cheating ({TotalRiskScore} pts)", "#D32F2F")
+            };
+
+            RiskLevelText = riskText;
+            RiskLevelColorHex = riskColor;
 
             TotalViolationsCount = grouped.Sum(x => x.Count);
             ViolationSummaries = new ObservableCollection<ViolationCategorySummary>(grouped);
