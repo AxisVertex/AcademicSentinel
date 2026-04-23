@@ -590,7 +590,7 @@ namespace AcademicSentinel.Client.Views.SAC
                         _detectorsRunning = false;
                         if (_detectorRuntime != null)
                         {
-                            await _detectorRuntime.StopMonitoringAsync();
+                            _detectorRuntime.IsPaused = true;
                         }
 
                         TxtMonitoringStatus.Text = "Paused (Awaiting Instructor)";
@@ -623,7 +623,7 @@ namespace AcademicSentinel.Client.Views.SAC
                         _detectorsRunning = true;
                         if (_detectorRuntime != null)
                         {
-                            await _detectorRuntime.SetMonitoringEnabledAsync(true);
+                            _detectorRuntime.IsPaused = false;
                         }
 
                         TxtMonitoringStatus.Text = "Monitoring Active - You cannot leave during the session";

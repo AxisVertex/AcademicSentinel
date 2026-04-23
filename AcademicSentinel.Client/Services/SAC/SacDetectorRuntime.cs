@@ -14,6 +14,7 @@ namespace AcademicSentinel.Client.Services.SAC
         private readonly DecisionEngineService _decisionEngineService;
         private bool _isStarted;
         private bool _preFlightCompleted;
+        public bool IsPaused { get; set; } = false;
         public bool IsLoggingEnabled { get; private set; } = true;
 
         public SacDetectorRuntime(DetectorRuntimeOptions options)
@@ -118,6 +119,9 @@ namespace AcademicSentinel.Client.Services.SAC
 
         private IReadOnlyList<DetectorFinding> EvaluateAndMapFindings(IReadOnlyList<MonitoringDetectionEvent> events)
         {
+            if (IsPaused)
+                return Array.Empty<DetectorFinding>();
+
             if (events == null || events.Count == 0)
                 return Array.Empty<DetectorFinding>();
 
