@@ -166,7 +166,35 @@ namespace AcademicSentinel.Client.Views.SAC
                 IdleThresholdSeconds = _roomDetectionSettings.IdleThresholdSeconds,
                 EnableProcessDetection = _roomDetectionSettings.EnableProcessDetection,
                 EnableVirtualizationCheck = _roomDetectionSettings.EnableVirtualizationCheck,
-                BlacklistedProcessNames = new HashSet<string>(ProcessBlacklist, StringComparer.OrdinalIgnoreCase)
+                BlacklistedProcessNames = new HashSet<string>(ProcessBlacklist, StringComparer.OrdinalIgnoreCase),
+                OnHardwareStateDetected = async (isVm, isRemote) =>
+                {
+                    try
+                    {
+                        if (_hubConnection == null || _hubConnection.State != HubConnectionState.Connected)
+                            return;
+
+                        int studentId = SessionManager.CurrentUser?.Id ?? 0;
+                        if (studentId <= 0)
+                            return;
+
+                        await _hubConnection.InvokeAsync("UpdateHardwareState", _roomId, studentId, isVm, isRemote);
+                    }
+                    catch
+                    {
+                        // keep session stable
+                    }
+                },
+                OnPreFlightViolationDetected = finding =>
+                {
+                    if (finding == null)
+                        return;
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        _ = ReportViolationAsync(finding.EventType, finding.SeverityScore, finding.Description);
+                    });
+                }
             });
 
             var enabledModules = new List<string>();
@@ -272,6 +300,12 @@ namespace AcademicSentinel.Client.Views.SAC
                 if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
                 {
                     var monitoringState = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
+
+                    if (_detectorRuntime?.IsPaused == true && monitoringState)
+                    {
+                        UpdateCompactCountdown();
+                        return;
+                    }
 
                     // Keep COUNTDOWN state stable until countdown ends.
                     if (_monitoringCountdownEndsAt.HasValue && DateTime.Now < _monitoringCountdownEndsAt.Value && !monitoringState)
@@ -385,6 +419,8 @@ namespace AcademicSentinel.Client.Views.SAC
                     EventType = eventType,
                     SeverityScore = severityScore,
                     Description = description,
+                    CurrentScore = ParseCurrentScore(description),
+                    CurrentLevel = ParseCurrentLevel(description),
                     Timestamp = now
                 };
 
@@ -418,6 +454,38 @@ namespace AcademicSentinel.Client.Views.SAC
                 _pendingViolationQueue.Dequeue();
 
             _pendingViolationQueue.Enqueue(payload);
+        }
+
+        private static int ParseCurrentScore(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+                return 0;
+
+            const string marker = "CumulativeScore=";
+            int start = description.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+                return 0;
+
+            start += marker.Length;
+            int end = description.IndexOf(';', start);
+            var value = end >= 0 ? description.Substring(start, end - start) : description.Substring(start);
+            return int.TryParse(value.Trim(), out var parsed) ? parsed : 0;
+        }
+
+        private static string ParseCurrentLevel(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+                return string.Empty;
+
+            const string marker = "RiskLevel=";
+            int start = description.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+                return string.Empty;
+
+            start += marker.Length;
+            int end = description.IndexOf(';', start);
+            var value = end >= 0 ? description.Substring(start, end - start) : description.Substring(start);
+            return value.Trim();
         }
 
         private async Task FlushPendingViolationsAsync()
@@ -515,6 +583,72 @@ namespace AcademicSentinel.Client.Views.SAC
                         if (_sessionEnded && isActive)
                             return;
                         SetMonitoringActive(isActive);
+                    });
+                });
+
+                _hubConnection.On("MonitoringPaused", () =>
+                {
+                    _ = Dispatcher.Invoke(async () =>
+                    {
+                        if (_sessionEnded)
+                            return;
+
+                        _detectorsRunning = false;
+                        if (_detectorRuntime != null)
+                        {
+                            _detectorRuntime.IsPaused = true;
+                        }
+
+                        TxtMonitoringStatus.Text = "Paused (Awaiting Instructor)";
+                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
+
+                        if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                        {
+                            compactStatus.Text = "Monitoring: PAUSED";
+                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
+                        }
+
+                        if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
+                        {
+                            headerStatus.Text = "Monitoring: PAUSED";
+                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
+                        }
+
+                        // Soft lock remains active: do not alter phase/leave-request state.
+                        UpdateHeaderSessionClock();
+                    });
+                });
+
+                _hubConnection.On("MonitoringResumed", () =>
+                {
+                    _ = Dispatcher.Invoke(async () =>
+                    {
+                        if (_sessionEnded)
+                            return;
+
+                        _detectorsRunning = true;
+                        if (_detectorRuntime != null)
+                        {
+                            _detectorRuntime.IsPaused = false;
+                        }
+
+                        TxtMonitoringStatus.Text = "Monitoring Active - You cannot leave during the session";
+                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+
+                        if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                        {
+                            compactStatus.Text = "Monitoring: ACTIVE";
+                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                        }
+
+                        if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
+                        {
+                            headerStatus.Text = "Monitoring: ACTIVE";
+                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                        }
+
+                        // Soft lock remains active: do not alter phase/leave-request state.
+                        UpdateHeaderSessionClock();
                     });
                 });
 
@@ -877,6 +1011,29 @@ namespace AcademicSentinel.Client.Views.SAC
 
         private void UpdateCompactCountdown()
         {
+            if (_detectorRuntime?.IsPaused == true && !_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
+            {
+                TxtMonitoringStatus.Text = "Paused (Awaiting Instructor)";
+                TxtMonitoringStatus.Foreground = Brushes.Orange;
+
+                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                {
+                    compactStatus.Text = "Monitoring: PAUSED";
+                    compactStatus.Foreground = Brushes.Orange;
+                }
+            }
+            else if (!_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
+            {
+                TxtMonitoringStatus.Text = "ACTIVE";
+                TxtMonitoringStatus.Foreground = Brushes.LimeGreen;
+
+                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                {
+                    compactStatus.Text = "Monitoring: ACTIVE";
+                    compactStatus.Foreground = Brushes.LimeGreen;
+                }
+            }
+
             if (_monitoringCountdownEndsAt.HasValue)
             {
                 var countdownLeft = _monitoringCountdownEndsAt.Value - DateTime.Now;
@@ -909,28 +1066,12 @@ namespace AcademicSentinel.Client.Views.SAC
             if (remaining < TimeSpan.Zero)
                 remaining = TimeSpan.Zero;
 
-            // Safety fallback: if timer has already reached zero but we did not receive
-            // a monitoring-off signal yet, unlock SAC so students are not stuck.
+            // Keep soft lock enforced even when timer reaches zero.
+            // Leave permissions must only change via Pre-Session, SessionEnded, or LeaveGranted flows.
             if (_timerEnabled && remaining == TimeSpan.Zero && _isMonitoringActive && !_sessionEnded)
             {
-                _monitoringStartedAt = null;
-                _isMonitoringActive = false;
-                TxtMonitoringStatus.Text = "Monitoring ended - You may now leave the session";
-                TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50));
-
-                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
-                {
-                    compactStatus.Text = "Monitoring: Stopped";
-                    compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50));
-                }
-                if (FindName("TxtCompactLeavePermission") is TextBlock leavePerm)
-                {
-                    leavePerm.Text = "Leave Permission: Allowed";
-                    leavePerm.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50));
-                }
-                if (FindName("TxtFullCountdown") is TextBlock fullCountdownWhenStopped)
-                    fullCountdownWhenStopped.Text = string.Empty;
-
+                if (FindName("TxtFullCountdown") is TextBlock fullCountdownAtZero)
+                    fullCountdownAtZero.Text = "Countdown: 00:00";
                 UpdateHeaderSessionClock();
                 return;
             }
@@ -1080,6 +1221,8 @@ namespace AcademicSentinel.Client.Views.SAC
             public string EventType { get; set; } = string.Empty;
             public int SeverityScore { get; set; }
             public string Description { get; set; } = string.Empty;
+            public int CurrentScore { get; set; }
+            public string CurrentLevel { get; set; } = string.Empty;
             public DateTime Timestamp { get; set; } = DateTime.UtcNow;
         }
     }
