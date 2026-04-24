@@ -81,7 +81,7 @@ public class MonitoringHub : Hub
             await Clients.Group(roomId.ToString()).SendAsync("MonitoringStateChanged", true);
         });
     }
-
+    // 1
     public async Task EndSessionOnDisconnect(int roomId)
     {
         var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
