@@ -37,9 +37,6 @@ namespace AcademicSentinel.Client.Views.SAC
         private RoomDetectionSettingsDto _roomDetectionSettings;
         private bool _detectorsInitialized;
         private bool _detectorsRunning;
-        private bool _connectionLost;
-        private bool _sessionInterrupted;
-        private bool _isResumeGracePeriodActive;
         private SacDetectorRuntime _detectorRuntime;
         private enum ExamPhase
         {
@@ -216,9 +213,7 @@ namespace AcademicSentinel.Client.Views.SAC
             bool shouldRun = _detectorsInitialized
                              && _isMonitoringActive
                              && !_sessionEnded
-                             && !_monitoringCountdownEndsAt.HasValue
-                             && !_connectionLost
-                             && !_isResumeGracePeriodActive;
+                             && !_monitoringCountdownEndsAt.HasValue;
 
             _detectorRuntime?.SetMonitoringEnabled(shouldRun);
 
@@ -382,73 +377,10 @@ namespace AcademicSentinel.Client.Views.SAC
 
         private void PollDetectors()
         {
-            EvaluateSignalRConnectivity();
-
             if (!_detectorsRunning || _detectorRuntime == null)
                 return;
 
             ReportFindings(_detectorRuntime.Poll(IsWindowForeground()));
-        }
-
-        private void BeginMonitoringGracePeriod()
-        {
-            _isResumeGracePeriodActive = true;
-            _detectorRuntime?.SetMonitoringEnabled(false);
-            _detectorsRunning = false;
-
-            Task.Run(async () =>
-            {
-                for (int i = 10; i > 0; i--)
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        TxtMonitoringStatus.Text = $"RESUMING IN {i}s...";
-                        TxtMonitoringStatus.Foreground = Brushes.Goldenrod;
-                    });
-
-                    await Task.Delay(1000);
-                }
-
-                Dispatcher.Invoke(() =>
-                {
-                    _isResumeGracePeriodActive = false;
-
-                    if (_sessionEnded || _sessionInterrupted || _connectionLost || !_isMonitoringActive)
-                        return;
-
-                    UpdateDetectorRuntimeState();
-                    TxtMonitoringStatus.Text = "ACTIVE";
-                    TxtMonitoringStatus.Foreground = Brushes.LimeGreen;
-                });
-            });
-        }
-
-        private void EvaluateSignalRConnectivity()
-        {
-            bool isConnected = _hubConnection != null && _hubConnection.State == HubConnectionState.Connected;
-
-            if (!isConnected)
-            {
-                if (_connectionLost)
-                    return;
-
-                _connectionLost = true;
-                _detectorsRunning = false;
-                _detectorRuntime?.SetMonitoringEnabled(false);
-                TxtMonitoringStatus.Text = "CONNECTION LOST - RECONNECTING...";
-                TxtMonitoringStatus.Foreground = Brushes.Orange;
-                return;
-            }
-
-            if (!_connectionLost)
-                return;
-
-            _connectionLost = false;
-
-            if (!_sessionInterrupted)
-            {
-                UpdateDetectorRuntimeState();
-            }
         }
 
         private void ReportFindings(IReadOnlyList<DetectorFinding> findings)
@@ -600,17 +532,11 @@ namespace AcademicSentinel.Client.Views.SAC
                 {
                     try
                     {
-                        _connectionLost = false;
                         await _hubConnection.InvokeAsync("JoinLiveExam", _roomId);
                         var reconnectedStudentId = SessionManager.CurrentUser?.Id ?? 0;
                         if (reconnectedStudentId > 0)
                             await _hubConnection.InvokeAsync("ReSyncState", _roomId, reconnectedStudentId);
-                        await Dispatcher.InvokeAsync(async () =>
-                        {
-                            if (!_sessionInterrupted)
-                                UpdateDetectorRuntimeState();
-                            await FlushPendingViolationsAsync();
-                        });
+                        await Dispatcher.InvokeAsync(async () => await FlushPendingViolationsAsync());
                     }
                     catch
                     {
@@ -626,53 +552,6 @@ namespace AcademicSentinel.Client.Views.SAC
 
                         _currentPhase = ExamPhase.Countdown;
                         _leaveRequestState = LeaveRequestState.Locked;
-                        UpdateRequestLeaveButtonState();
-                    });
-                });
-
-                _hubConnection.On("SessionInterrupted", () =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        _sessionInterrupted = true;
-                        _sessionEnded = true;
-                        _monitoringCountdownEndsAt = null;
-                        _monitoringStartedAt = null;
-                        _timerEnabled = false;
-                        _isMonitoringActive = false;
-                        _detectorsRunning = false;
-                        _leaveRequestState = LeaveRequestState.Unlocked;
-                        _detectorRuntime?.SetMonitoringEnabled(false);
-
-                        TxtMonitoringStatus.Text = "SESSION INTERRUPTED";
-                        TxtMonitoringStatus.Foreground = Brushes.Red;
-
-                        if (FindName("BtnRequestLeave") is Button leaveButton)
-                        {
-                            leaveButton.Content = "Leave Session";
-                            leaveButton.IsEnabled = true;
-                            leaveButton.Background = new SolidColorBrush(Color.FromRgb(27, 94, 32));
-                            leaveButton.Foreground = Brushes.White;
-                        }
-
-                        if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
-                        {
-                            compactStatus.Text = "Monitoring: INTERRUPTED";
-                            compactStatus.Foreground = Brushes.Red;
-                        }
-
-                        if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
-                        {
-                            headerStatus.Text = "SESSION INTERRUPTED";
-                            headerStatus.Foreground = Brushes.Red;
-                        }
-
-                        if (FindName("TxtCompactLeavePermission") is TextBlock leavePerm)
-                        {
-                            leavePerm.Text = "Leave Permission: Allowed";
-                            leavePerm.Foreground = new SolidColorBrush(Color.FromRgb(27, 94, 32));
-                        }
-
                         UpdateRequestLeaveButtonState();
                     });
                 });
@@ -703,27 +582,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     {
                         if (_sessionEnded && isActive)
                             return;
-
-                        if (isActive)
-                        {
-                            SetMonitoringActive(true);
-                            BeginMonitoringGracePeriod();
-                            return;
-                        }
-
-                        SetMonitoringActive(false);
-                    });
-                });
-
-                _hubConnection.On("MonitoringResumed", () =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (_sessionEnded)
-                            return;
-
-                        SetMonitoringActive(true);
-                        BeginMonitoringGracePeriod();
+                        SetMonitoringActive(isActive);
                     });
                 });
 
@@ -916,15 +775,7 @@ namespace AcademicSentinel.Client.Views.SAC
                 await FlushPendingViolationsAsync();
 
                 var monitoringState = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-                if (monitoringState)
-                {
-                    SetMonitoringActive(true);
-                    BeginMonitoringGracePeriod();
-                }
-                else
-                {
-                    SetMonitoringActive(false);
-                }
+                SetMonitoringActive(monitoringState);
             }
             catch (Exception ex)
             {
