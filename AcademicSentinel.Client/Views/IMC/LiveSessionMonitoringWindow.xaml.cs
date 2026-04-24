@@ -445,11 +445,30 @@ namespace AcademicSentinel.Client.Views.IMC
                 _ = LoadParticipantsFromServerAsync();
             })));
 
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentConnectionLost", studentId => Dispatcher.Invoke(() =>
+            {
+                if (_safelyLeftStudentIds.Contains(studentId) || _permanentlyDismissedStudents.Contains(studentId))
+                    return;
+
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (targetStudent == null)
+                    return;
+
+                targetStudent.IsOffline = true;
+                targetStudent.Status = "Offline/Disconnected";
+                targetStudent.StatusColor = "#D32F2F";
+                targetStudent.IsLeaveRequested = false;
+                _leaveRequestedStateByStudentId[studentId] = false;
+                LogActivity("SYSTEM", "SYSTEM", $"⚠ CONNECTION LOST. {targetStudent.Name} disconnected unexpectedly.", "#D32F2F");
+                _studentsView.Refresh();
+            })));
+
             _hubSubscriptions.Add(_hubConnection.On<int, string>("StudentJoinedOrReconnected", (studentId, studentName) => Dispatcher.InvokeAsync(() =>
             {
                 var student = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (student != null)
                 {
+                    student.IsOffline = false;
                     student.Status = "Connected";
                     student.StatusColor = "#4CAF50";
                 }
@@ -578,6 +597,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 var student = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (student != null)
                 {
+                    student.IsOffline = false;
                     student.Status = "Completed";
                     student.StatusColor = "#1B5E20";
                     LogActivity("SYSTEM", "SYSTEM", $"EXAM COMPLETED. Student exited properly. {student.Name}", "#1B5E20");
@@ -1148,12 +1168,14 @@ namespace AcademicSentinel.Client.Views.IMC
         private bool _hasHardwareViolation;
         private bool _isUsingVm;
         private bool _isRemoteDesktop;
+        private bool _isOffline;
         public string Email { get; set; }
         public string ProfileImageUrl { get; set; } = string.Empty;
         public Visibility HasProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Collapsed : Visibility.Visible;
         public Visibility HasNoProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Visible : Visibility.Collapsed;
         public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
         public string StatusColor { get => _statusColor; set { _statusColor = value; OnPropertyChanged(); } }
+        public bool IsOffline { get => _isOffline; set { _isOffline = value; OnPropertyChanged(); } }
         public int ViolationCount
         {
             get => _violations;
