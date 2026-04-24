@@ -213,6 +213,68 @@ namespace AcademicSentinel.Client.Views.IMC
 
         private void SessionAction_Click(object sender, RoutedEventArgs e) => new LiveSessionMonitoringWindow(CurrentRoomId, TxtRoomTitle.Text).Show();
         private async void BtnGenerateCode_Click(object sender, RoutedEventArgs e) { /* Code Generation Logic */ }
+        private async void BtnForceEndStuckSession_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", SessionManager.JwtToken);
+
+                var roomResponse = await client.GetAsync($"{ApiEndpoints.Rooms}/{CurrentRoomId}");
+                if (!roomResponse.IsSuccessStatusCode)
+                {
+                    MessageBox.Show("Unable to check room status.", "Force End", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var room = await roomResponse.Content.ReadFromJsonAsync<RoomStatusSnapshot>();
+                if (room == null)
+                {
+                    MessageBox.Show("Room data unavailable.", "Force End", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (!string.Equals(room.Status, "Active", StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show("Room is not active.", "Force End", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var historyResponse = await client.GetAsync($"{ApiEndpoints.Rooms}/{CurrentRoomId}/history");
+                if (!historyResponse.IsSuccessStatusCode)
+                {
+                    MessageBox.Show("Unable to load room session history.", "Force End", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var history = await historyResponse.Content.ReadFromJsonAsync<List<PastSessionDto>>() ?? new List<PastSessionDto>();
+                var activeSession = history
+                    .Where(s => string.Equals(s.Status, "Active", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(s => s.StartTime)
+                    .FirstOrDefault();
+
+                if (activeSession == null)
+                {
+                    MessageBox.Show("No active session record found to end.", "Force End", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var endResponse = await client.PutAsync($"{ApiEndpoints.Rooms}/sessions/{activeSession.Id}/end", null);
+                if (!endResponse.IsSuccessStatusCode)
+                {
+                    MessageBox.Show("Failed to force end stuck session.", "Force End", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                FetchRoomStatus();
+                FetchPastSessions();
+                MessageBox.Show("Room forcefully reset.", "Force End", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to reset room: {ex.Message}", "Force End", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
         private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e) { }
         private void CmbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
         private void ViewSession_Click(object sender, RoutedEventArgs e) { }
@@ -241,4 +303,9 @@ namespace AcademicSentinel.Client.Views.IMC
     }
 
     public class GenerateCodeResponse { public string EnrollmentCode { get; set; } = string.Empty; }
+
+    public class RoomStatusSnapshot
+    {
+        public string Status { get; set; } = string.Empty;
+    }
 }

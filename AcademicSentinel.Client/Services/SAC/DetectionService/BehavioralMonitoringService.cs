@@ -88,6 +88,8 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
             _isMonitoring = true;
             _isCurrentlyIdle = false;
+            _lastForegroundWindow = GetForegroundWindow();
+            _lastWindowName = GetWindowName(_lastForegroundWindow);
             _lastReportedIdleLevel = 0;
             _monitoringStartedAtUtc = DateTime.UtcNow;
             _lastClipboardSequenceNumber = GetClipboardSequenceNumber();

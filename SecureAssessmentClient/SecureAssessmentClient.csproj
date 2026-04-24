@@ -19,6 +19,10 @@
     <EmbeddedResource Remove="AcademicSentinel.Server\**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="9.0.0" />
+  </ItemGroup>
+
   <!-- 
     All PackageReference entries are now managed centrally in Directory.Build.props
     This file automatically imports shared and client-specific packages from the root props file.

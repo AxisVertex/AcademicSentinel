@@ -17,13 +17,22 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading; // NEW: Required for the Live Timer
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using MaterialDesignThemes.Wpf;
 using AcademicSentinel.Client.Models;
+using AcademicSentinel.Client.Views.IMC.Dialogs;
 
 namespace AcademicSentinel.Client.Views.IMC
 {
     public partial class LiveSessionMonitoringWindow : Window
     {
+        private enum MonitoringControlState
+        {
+            NotStarted,
+            Active,
+            Paused
+        }
+
         private HubConnection _hubConnection;
         private int _roomId;
         private int _totalAlerts = 0;
@@ -36,6 +45,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private bool _isEndingFromTimer;
         private DateTime? _monitoringEffectiveStartTime;
         private int _countdownSecondsRemaining;
+        private MonitoringControlState _monitoringControlState = MonitoringControlState.NotStarted;
 
         // Timer Variables
         private DispatcherTimer _sessionTimer;
@@ -50,6 +60,10 @@ namespace AcademicSentinel.Client.Views.IMC
         private readonly Dictionary<int, bool> _leaveRequestedStateByStudentId = new();
         private readonly HashSet<int> _safelyLeftStudentIds = new();
         private readonly HashSet<int> _permanentlyDismissedStudents = new HashSet<int>();
+        private readonly HashSet<int> _studentsWithViolations = new HashSet<int>();
+        private readonly ConcurrentDictionary<int, ObservableCollection<StudentMonitoringEvent>> _studentLogs = new();
+        private readonly List<IDisposable> _hubSubscriptions = new();
+        private int? _selectedStudentId;
 
         public ObservableCollection<LiveStudentStatus> ActiveStudents { get; set; }
         public ObservableCollection<LogEntry> LogFeed { get; set; }
@@ -89,6 +103,9 @@ namespace AcademicSentinel.Client.Views.IMC
 
             StudentsItemsControl.ItemsSource = _studentsView;
             LogFeedItemsControl.ItemsSource = _logsView;
+
+            InitializeTimerIndicatorState();
+            SetMonitoringControlButtonState(MonitoringControlState.NotStarted);
 
             _ = LoadParticipantsFromServerAsync();
 
@@ -136,13 +153,50 @@ namespace AcademicSentinel.Client.Views.IMC
             _logsView.Refresh();
         }
 
-        private void BtnShowGlobalLogs_Click(object sender, RoutedEventArgs e)
+        private void InitializeTimerIndicatorState()
         {
-            if (EnsureSessionNotEnded()) return;
-            _selectedStudent = null;
-            TxtLogHeader.Text = "Global Log Feed";
-            TxtSelectedName.Text = "Select a Student";
-            ApplyAllFilters();
+            var isTimerDisabled = _monitoringDurationSeconds <= 0;
+
+            if (FindName("RunTimerDisabledIndicator") is TextBlock timerDisabledIndicator)
+                timerDisabledIndicator.Visibility = isTimerDisabled ? Visibility.Visible : Visibility.Collapsed;
+
+            if (FindName("CountdownDisabledIndicator") is TextBlock countdownDisabledIndicator)
+                countdownDisabledIndicator.Visibility = isTimerDisabled ? Visibility.Visible : Visibility.Collapsed;
+
+            if (FindName("TxtCountdownDisplay") is TextBlock countdownDisplay)
+                countdownDisplay.Visibility = isTimerDisabled ? Visibility.Collapsed : Visibility.Visible;
+
+            if (FindName("TxtMonitoringTimerDisplay") is TextBlock timerDisplay)
+                timerDisplay.Text = isTimerDisabled ? "N/A" : "--:--:--";
+        }
+
+        private void SetMonitoringControlButtonState(MonitoringControlState state)
+        {
+            _monitoringControlState = state;
+
+            if (FindName("TxtStartStopLabel") is not TextBlock label || FindName("StartStopIcon") is not PackIcon icon)
+                return;
+
+            switch (state)
+            {
+                case MonitoringControlState.Active:
+                    label.Text = "Pause Monitoring";
+                    icon.Kind = PackIconKind.Pause;
+                    BtnStartMonitoring.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D32F2F"));
+                    break;
+
+                case MonitoringControlState.Paused:
+                    label.Text = "Resume Monitoring";
+                    icon.Kind = PackIconKind.Play;
+                    BtnStartMonitoring.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF9800"));
+                    break;
+
+                default:
+                    label.Text = "Start Session Monitoring";
+                    icon.Kind = PackIconKind.Play;
+                    BtnStartMonitoring.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1B5E20"));
+                    break;
+            }
         }
 
         // ======================== SESSION & SIGNALR ========================
@@ -151,18 +205,23 @@ namespace AcademicSentinel.Client.Views.IMC
         {
             if (EnsureSessionNotEnded()) return;
 
-            var startStopLabel = FindName("TxtStartStopLabel") as TextBlock;
-            var startStopIcon = FindName("StartStopIcon") as PackIcon;
             var monitoringState = FindName("TxtMonitoringState") as TextBlock;
 
-            if (_isMonitoringStarted)
+            if (_monitoringControlState == MonitoringControlState.Active)
             {
-                await StopMonitoringAsync();
+                await PauseMonitoringAsync();
+                return;
+            }
+
+            if (_monitoringControlState == MonitoringControlState.Paused)
+            {
+                await ResumeMonitoringAsync();
                 return;
             }
 
             BtnStartMonitoring.IsEnabled = false;
-            if (startStopLabel != null) startStopLabel.Text = "Starting...";
+            if (FindName("TxtStartStopLabel") is TextBlock startLabel)
+                startLabel.Text = "Starting...";
             try
             {
                 if (_currentSessionId <= 0)
@@ -173,7 +232,7 @@ namespace AcademicSentinel.Client.Views.IMC
                     if (!response.IsSuccessStatusCode)
                     {
                         BtnStartMonitoring.IsEnabled = true;
-                        if (startStopLabel != null) startStopLabel.Text = "Start Session Monitoring";
+                        SetMonitoringControlButtonState(MonitoringControlState.NotStarted);
                         MessageBox.Show("Failed to start session.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
@@ -204,8 +263,7 @@ namespace AcademicSentinel.Client.Views.IMC
                     monitoringState.Text = _startDelaySeconds > 0
                         ? $"Monitoring: Countdown (Session #{_currentSessionId})"
                         : $"Monitoring: Active (Session #{_currentSessionId})";
-                if (startStopLabel != null) startStopLabel.Text = "Stop Monitoring";
-                if (startStopIcon != null) startStopIcon.Kind = PackIconKind.Stop;
+                SetMonitoringControlButtonState(MonitoringControlState.Active);
                 BtnStartMonitoring.IsEnabled = true;
                 TimerPanel.Visibility = Visibility.Visible; // Show the timer
                 StartSessionTimer(); // Start the clock!
@@ -214,35 +272,45 @@ namespace AcademicSentinel.Client.Views.IMC
             }
             catch (Exception ex)
             {
-                if (startStopLabel != null) startStopLabel.Text = "Start Session Monitoring";
-                if (startStopIcon != null) startStopIcon.Kind = PackIconKind.Play;
+                SetMonitoringControlButtonState(MonitoringControlState.NotStarted);
                 BtnStartMonitoring.IsEnabled = true;
                 MessageBox.Show(ex.Message);
             }
         }
 
-        private async Task StopMonitoringAsync()
+        private async Task PauseMonitoringAsync()
         {
             if (EnsureSessionNotEnded()) return;
-
-            if (MessageBox.Show("Stop monitoring for this session?", "Confirm", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
-                return;
 
             if (_currentSessionId > 0)
             {
                 if (_hubConnection != null)
                 {
-                        await _hubConnection.InvokeAsync("SetMonitoringState", _roomId, false);
+                    await _hubConnection.InvokeAsync("PauseSessionMonitoring", _roomId);
                 }
             }
 
             _isMonitoringStarted = false;
-            if (FindName("TxtMonitoringState") is TextBlock monitoringState) monitoringState.Text = "Monitoring: Inactive";
-            if (FindName("TxtStartStopLabel") is TextBlock startStopLabel) startStopLabel.Text = "Start Session Monitoring";
-            if (FindName("StartStopIcon") is PackIcon startStopIcon) startStopIcon.Kind = PackIconKind.Play;
-            _sessionTimer?.Stop();
-            TimerPanel.Visibility = Visibility.Collapsed;
-            LogActivity("SYSTEM", "STOPPED", "Monitoring stopped. Session remains active.", "#D32F2F");
+            if (FindName("TxtMonitoringState") is TextBlock monitoringState)
+                monitoringState.Text = $"Monitoring: Paused (Session #{_currentSessionId})";
+            SetMonitoringControlButtonState(MonitoringControlState.Paused);
+            LogActivity("SYSTEM", "PAUSED", "Monitoring paused. Session remains active and soft lock is enforced.", "#FF9800");
+        }
+
+        private async Task ResumeMonitoringAsync()
+        {
+            if (EnsureSessionNotEnded()) return;
+
+            if (_currentSessionId > 0 && _hubConnection != null)
+            {
+                await _hubConnection.InvokeAsync("ResumeSessionMonitoring", _roomId);
+            }
+
+            _isMonitoringStarted = true;
+            if (FindName("TxtMonitoringState") is TextBlock monitoringState)
+                monitoringState.Text = $"Monitoring: Active (Session #{_currentSessionId})";
+            SetMonitoringControlButtonState(MonitoringControlState.Active);
+            LogActivity("SYSTEM", "RESUMED", "Monitoring resumed.", "#1B5E20");
         }
 
         // NEW: Timer Method
@@ -307,28 +375,25 @@ namespace AcademicSentinel.Client.Views.IMC
                     }
                     else
                     {
-                        await Dispatcher.InvokeAsync(async () => await StopMonitoringOnlyAsync());
+                        await Dispatcher.InvokeAsync(async () => await PauseMonitoringOnlyAsync());
                     }
                 }
             };
             _sessionTimer.Start();
         }
 
-        private async Task StopMonitoringOnlyAsync()
+        private async Task PauseMonitoringOnlyAsync()
         {
             if (_hubConnection != null)
             {
-                await _hubConnection.InvokeAsync("SetMonitoringState", _roomId, false);
+                await _hubConnection.InvokeAsync("PauseSessionMonitoring", _roomId);
             }
 
             _isMonitoringStarted = false;
-            if (FindName("TxtMonitoringState") is TextBlock monitoringState) monitoringState.Text = $"Monitoring: Stopped (Session #{_currentSessionId})";
-            if (FindName("TxtStartStopLabel") is TextBlock startStopLabel) startStopLabel.Text = "Start Session Monitoring";
-            if (FindName("StartStopIcon") is PackIcon startStopIcon) startStopIcon.Kind = PackIconKind.Play;
-            if (FindName("TxtCountdownDisplay") is TextBlock countdownDisplay) countdownDisplay.Text = "00:00";
-            if (FindName("TxtMonitoringTimerDisplay") is TextBlock timerDisplay) timerDisplay.Text = "00:00:00";
-            TimerPanel.Visibility = Visibility.Collapsed;
-            LogActivity("SYSTEM", "STOPPED", "Monitoring stopped by timer.", "#D32F2F");
+            if (FindName("TxtMonitoringState") is TextBlock monitoringState)
+                monitoringState.Text = $"Monitoring: Paused (Session #{_currentSessionId})";
+            SetMonitoringControlButtonState(MonitoringControlState.Paused);
+            LogActivity("SYSTEM", "PAUSED", "Monitoring paused by timer. Session remains active and soft lock is enforced.", "#FF9800");
         }
 
         private bool EnsureSessionNotEnded()
@@ -372,18 +437,23 @@ namespace AcademicSentinel.Client.Views.IMC
                 .WithUrl($"{ApiEndpoints.BaseUrl}/monitoringHub", o => o.AccessTokenProvider = () => Task.FromResult(SessionManager.JwtToken))
                 .WithAutomaticReconnect().Build();
 
-            _hubConnection.On<int>("StudentJoined", (id) => Dispatcher.Invoke(() => {
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentJoined", (id) => Dispatcher.Invoke(() => {
                 if (_permanentlyDismissedStudents.Contains(id))
                     return;
 
                 _safelyLeftStudentIds.Remove(id);
                 _ = LoadParticipantsFromServerAsync();
-            }));
+            })));
 
-            _hubConnection.On<int>("StudentDisconnected", (id) => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentDisconnected", (id) => Dispatcher.Invoke(() =>
             {
                 if (_safelyLeftStudentIds.Contains(id) || _permanentlyDismissedStudents.Contains(id))
                     return;
+
+                if (_selectedStudentId == id)
+                {
+                    CollapseDetailPanel();
+                }
 
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == id);
                 if (targetStudent == null)
@@ -398,9 +468,10 @@ namespace AcademicSentinel.Client.Views.IMC
                 _studentsView.Refresh();
 
                 _ = LoadParticipantsFromServerAsync();
-            }));
+            })));
 
-            _hubConnection.On<int>("StudentConnectionLost", id => Dispatcher.Invoke(() =>
+
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentConnectionLost", id => _ = Dispatcher.InvokeAsync(() =>
             {
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == id);
                 if (targetStudent == null)
@@ -413,19 +484,24 @@ namespace AcademicSentinel.Client.Views.IMC
 
                 LogActivity(targetStudent.Email, "SYSTEM", "⚠️ CONNECTION LOST. Student dropped offline.", "#D32F2F");
                 _studentsView.Refresh();
-            }));
+            })));
 
-            _hubConnection.On<ViolationAlertPayload>("ViolationDetected", payload => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<ViolationAlertPayload>("ViolationDetected", payload => _ = Dispatcher.InvokeAsync(() =>
+
             {
                 if (payload == null) return;
 
                 if (_permanentlyDismissedStudents.Contains(payload.StudentId))
                     return;
 
+                _studentsWithViolations.Add(payload.StudentId);
+                AppendStudentMonitoringEvent(payload.StudentId, payload.EventType, payload.SeverityScore);
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == payload.StudentId);
                 if (targetStudent != null)
                 {
                     targetStudent.ViolationCount += Math.Max(1, payload.SeverityScore);
+                    targetStudent.HasViolation = true;
                     targetStudent.Status = $"ALERT: {payload.EventType}";
                     targetStudent.StatusColor = "#D32F2F";
                 }
@@ -435,28 +511,34 @@ namespace AcademicSentinel.Client.Views.IMC
                     ? payload.EventType
                     : $"{payload.EventType}: {payload.Description}";
                 LogActivity(email, "VIOLATION", message, "#D32F2F");
+                UpdateDetailPanelForIncomingViolation(payload.StudentId);
                 _studentsView.Refresh();
-            }));
+            })));
 
-            _hubConnection.On<int, string, int, DateTime>("ViolationDetected", (studentId, eventType, severityScore, timestamp) => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int, string, int, DateTime>("ViolationDetected", (studentId, eventType, severityScore, timestamp) => _ = Dispatcher.InvokeAsync(() =>
             {
                 if (_permanentlyDismissedStudents.Contains(studentId))
                     return;
+
+                _studentsWithViolations.Add(studentId);
+                AppendStudentMonitoringEvent(studentId, eventType, severityScore);
 
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent != null)
                 {
                     targetStudent.ViolationCount += Math.Max(1, severityScore);
+                    targetStudent.HasViolation = true;
                     targetStudent.Status = $"ALERT: {eventType}";
                     targetStudent.StatusColor = "#D32F2F";
                 }
 
                 var email = targetStudent?.Email ?? _allParticipants.FirstOrDefault(p => p.StudentId == studentId)?.StudentEmail ?? $"Student #{studentId}";
                 LogActivity(email, "VIOLATION", eventType, "#D32F2F");
+                UpdateDetailPanelForIncomingViolation(studentId);
                 _studentsView.Refresh();
-            }));
+            })));
 
-            _hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
             {
                 if (_permanentlyDismissedStudents.Contains(studentId))
                     return;
@@ -472,12 +554,18 @@ namespace AcademicSentinel.Client.Views.IMC
 
                 LogActivity(targetStudent.Email, "LEAVE_REQ", "Student requested leave approval.", "#FF9800");
                 _studentsView.Refresh();
-            }));
+            })));
 
-            _hubConnection.On<int>("StudentSafelyLeft", studentId => Dispatcher.Invoke(() =>
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentSafelyLeft", studentId => Dispatcher.Invoke(() =>
             {
                 _permanentlyDismissedStudents.Add(studentId);
                 _safelyLeftStudentIds.Add(studentId);
+
+                if (_selectedStudentId == studentId)
+                {
+                    CollapseDetailPanel();
+                }
+
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
                 if (targetStudent != null)
                 {
@@ -487,7 +575,33 @@ namespace AcademicSentinel.Client.Views.IMC
                     _studentsView.Refresh();
                     UpdateParticipantCount();
                 }
-            }));
+            })));
+
+            _hubSubscriptions.Add(_hubConnection.On<int, bool, bool>("ReceiveHardwareStateUpdate", (studentId, isVm, isRemote) => Dispatcher.Invoke(() =>
+            {
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (targetStudent == null)
+                    return;
+
+                targetStudent.IsUsingVM = isVm;
+                targetStudent.IsRemoteDesktop = isRemote;
+
+                var hasHardwareViolation = isVm || isRemote;
+                targetStudent.HasHardwareViolation = hasHardwareViolation;
+                if (hasHardwareViolation)
+                {
+                    targetStudent.HasViolation = true;
+                    _studentsWithViolations.Add(studentId);
+
+                    if (FindName("CriticalAlertBanner") is Border criticalAlertBanner)
+                        criticalAlertBanner.Visibility = Visibility.Visible;
+
+                    if (FindName("TxtCriticalAlertMessage") is TextBlock criticalAlertMessage)
+                        criticalAlertMessage.Text = $"🚨 CRITICAL SECURITY ALERT: {targetStudent.Name} is using a restricted hardware environment!";
+                }
+
+                _studentsView.Refresh();
+            })));
 
             try { await _hubConnection.StartAsync(); await _hubConnection.InvokeAsync("JoinRoom", _roomId.ToString()); }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
@@ -495,7 +609,8 @@ namespace AcademicSentinel.Client.Views.IMC
 
         private async void BtnApproveLeave_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is not Button btn || btn.DataContext is not LiveStudentStatus student)
+            if (sender is not Button btn || btn.DataContext is not 
+            student)
                 return;
 
             try
@@ -566,6 +681,7 @@ namespace AcademicSentinel.Client.Views.IMC
                             : (p.ProfileImageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                                 ? p.ProfileImageUrl
                                 : $"{ApiEndpoints.BaseUrl}{p.ProfileImageUrl}"),
+                        HasViolation = _studentsWithViolations.Contains(p.StudentId),
                         IsLeaveRequested = isLeaveRequested,
                         IsOffline = string.Equals(p.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase),
                         Status = isLeaveRequested
@@ -675,17 +791,97 @@ namespace AcademicSentinel.Client.Views.IMC
             _selectedStudent = (sender as Border)?.DataContext as LiveStudentStatus;
             if (_selectedStudent != null)
             {
+                _selectedStudentId = _selectedStudent.StudentId;
+                if (FindName("RightDetailPanel") is Border rightDetailPanel)
+                    rightDetailPanel.Visibility = Visibility.Visible;
+                StudentDetailPanel.DataContext = _selectedStudent;
+
                 TxtSelectedName.Text = _selectedStudent.Name;
                 TxtSelectedStatus.Text = _selectedStudent.Status.ToUpper();
                 SelectedStatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(_selectedStudent.StatusColor));
-                TxtAlertCount.Text = _selectedStudent.ViolationCount.ToString();
+                var specificLogs = _studentLogs.TryGetValue(_selectedStudent.StudentId, out var logs)
+                    ? logs.ToList()
+                    : new List<StudentMonitoringEvent>();
 
-                TxtRiskLevel.Text = _selectedStudent.ViolationCount > 3 ? "DANGER" : (_selectedStudent.ViolationCount > 0 ? "WARNING" : "SAFE");
-                TxtRiskLevel.Foreground = _selectedStudent.ViolationCount > 3 ? Brushes.Red : (_selectedStudent.ViolationCount > 0 ? Brushes.Orange : Brushes.Green);
+                TxtAlertCount.Text = specificLogs.Count.ToString();
+
+                var totalRiskScore = specificLogs.Sum(x => Math.Max(0, x.SeverityScore));
+                string riskText = "SAFE";
+                if (totalRiskScore >= 50) riskText = "CHEATING";
+                else if (totalRiskScore >= 20) riskText = "SUSPICIOUS";
+
+                TxtRiskLevel.Text = riskText;
+                TxtRiskLevel.Foreground = totalRiskScore >= 50 ? Brushes.Red : (totalRiskScore >= 20 ? Brushes.Goldenrod : Brushes.LimeGreen);
 
                 TxtLogHeader.Text = $"Logs: {_selectedStudent.Name}";
                 ApplyAllFilters();
             }
+        }
+
+        private void AppendStudentMonitoringEvent(int studentId, string eventType, int severityScore)
+        {
+            var logs = _studentLogs.GetOrAdd(studentId, _ => new ObservableCollection<StudentMonitoringEvent>());
+
+            _ = Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                logs.Insert(0, new StudentMonitoringEvent
+                {
+                    EventType = eventType,
+                    SeverityScore = severityScore
+                });
+            });
+        }
+
+        private void BtnCloseDetailPanel_Click(object sender, RoutedEventArgs e)
+        {
+            CollapseDetailPanel();
+            LogFeedItemsControl.ItemsSource = _logsView;
+            _selectedStudentId = null;
+            ApplyAllFilters();
+        }
+
+        private void CollapseDetailPanel()
+        {
+            if (FindName("RightDetailPanel") is Border rightDetailPanel)
+                rightDetailPanel.Visibility = Visibility.Collapsed;
+            StudentDetailPanel.DataContext = null;
+            _selectedStudent = null;
+            _selectedStudentId = null;
+
+            TxtSelectedName.Text = "Select a Student";
+            TxtSelectedStatus.Text = "WAITING";
+            SelectedStatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9E9E9E"));
+            TxtAlertCount.Text = "0";
+            TxtRiskLevel.Text = "SAFE";
+            TxtRiskLevel.Foreground = Brushes.LimeGreen;
+        }
+
+        private void UpdateDetailPanelForIncomingViolation(int studentId)
+        {
+            if (FindName("RightDetailPanel") is not Border rightDetailPanel
+                || rightDetailPanel.Visibility != Visibility.Visible
+                || _selectedStudentId != studentId)
+                return;
+
+            _ = Dispatcher.InvokeAsync(() =>
+            {
+                if (_selectedStudent == null)
+                    return;
+
+                var specificLogs = _studentLogs.TryGetValue(studentId, out var logs)
+                    ? logs.ToList()
+                    : new List<StudentMonitoringEvent>();
+
+                TxtAlertCount.Text = specificLogs.Count.ToString();
+
+                var totalRiskScore = specificLogs.Sum(x => Math.Max(0, x.SeverityScore));
+                string riskText = "SAFE";
+                if (totalRiskScore >= 50) riskText = "CHEATING";
+                else if (totalRiskScore >= 20) riskText = "SUSPICIOUS";
+
+                TxtRiskLevel.Text = riskText;
+                TxtRiskLevel.Foreground = totalRiskScore >= 50 ? Brushes.Red : (totalRiskScore >= 20 ? Brushes.Goldenrod : Brushes.LimeGreen);
+            });
         }
 
         private void BtnRemoveFromSession_Click(object sender, RoutedEventArgs e)
@@ -714,7 +910,11 @@ namespace AcademicSentinel.Client.Views.IMC
                 }
 
                 LogActivity(_selectedStudent.Email, "KICKED", "Instructor removed student from room.", "#D32F2F");
-                BtnShowGlobalLogs_Click(null, null);
+                _selectedStudent = null;
+                TxtLogHeader.Text = "Global Log Feed";
+                TxtSelectedName.Text = "Select a Student";
+                LogFeedItemsControl.ItemsSource = _logsView;
+                ApplyAllFilters();
                 await LoadParticipantsFromServerAsync();
             }
             catch (Exception ex)
@@ -768,6 +968,38 @@ namespace AcademicSentinel.Client.Views.IMC
             }
         }
 
+        private void BtnViewSummary_Click(object sender, RoutedEventArgs e)
+        {
+            if (EnsureSessionNotEnded()) return;
+            if (_selectedStudent == null)
+            {
+                MessageBox.Show("Select a participant first.", "Violation Summary", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => BtnViewSummary_Click(sender, e));
+                return;
+            }
+
+            var studentId = _selectedStudent.StudentId;
+            var studentName = string.IsNullOrWhiteSpace(_selectedStudent.Name) ? _selectedStudent.Email : _selectedStudent.Name;
+
+            var specificLogs = _studentLogs.TryGetValue(studentId, out var logs)
+                ? logs.ToList()
+                : new List<StudentMonitoringEvent>();
+
+            var totalRiskScore = specificLogs.Sum(x => Math.Max(0, x.SeverityScore));
+
+            var summaryDialog = new StudentViolationSummaryDialog(studentName, totalRiskScore, specificLogs)
+            {
+                Owner = this
+            };
+
+            summaryDialog.ShowDialog();
+        }
+
         private static string BuildRuleSummary(string label, List<ViolationLogDto> logs, string[] tags)
         {
             int count = logs.Count(v => tags.Any(t =>
@@ -801,6 +1033,7 @@ namespace AcademicSentinel.Client.Views.IMC
             _isMonitoringStarted = false;
             _isSessionEnded = true;
             _sessionTimer?.Stop(); // Stop timer
+            SetMonitoringControlButtonState(MonitoringControlState.NotStarted);
             if (FindName("TxtMonitoringState") is TextBlock monitoringState) monitoringState.Text = "Monitoring: Session Ended";
             if (FindName("TxtStartStopLabel") is TextBlock startStopLabel)
             {
@@ -852,10 +1085,33 @@ namespace AcademicSentinel.Client.Views.IMC
             base.OnClosing(e);
         }
 
+        protected override void OnClosed(EventArgs e)
+        {
+            foreach (var subscription in _hubSubscriptions)
+            {
+                subscription.Dispose();
+            }
+            _hubSubscriptions.Clear();
+
+            if (_hubConnection != null)
+            {
+                _ = _hubConnection.DisposeAsync();
+                _hubConnection = null;
+            }
+
+            base.OnClosed(e);
+        }
+
         private void StudentDropdown_Click(object sender, RoutedEventArgs e)
         {
             if (EnsureSessionNotEnded()) return;
             if (sender is Button btn && btn.ContextMenu != null) { btn.ContextMenu.PlacementTarget = btn; btn.ContextMenu.IsOpen = true; }
+        }
+
+        private void BtnDismissCriticalAlert_Click(object sender, RoutedEventArgs e)
+        {
+            if (FindName("CriticalAlertBanner") is Border criticalAlertBanner)
+                criticalAlertBanner.Visibility = Visibility.Collapsed;
         }
 
         // ======================== MOCK DATA INJECTOR ========================
@@ -888,16 +1144,35 @@ namespace AcademicSentinel.Client.Views.IMC
         private int _violations;
         private bool _isLeaveRequested;
         private bool _isOffline;
+        private bool _hasViolation;
+        private bool _hasHardwareViolation;
+        private bool _isUsingVm;
+        private bool _isRemoteDesktop;
         public string Email { get; set; }
         public string ProfileImageUrl { get; set; } = string.Empty;
         public Visibility HasProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Collapsed : Visibility.Visible;
         public Visibility HasNoProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Visible : Visibility.Collapsed;
         public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
         public string StatusColor { get => _statusColor; set { _statusColor = value; OnPropertyChanged(); } }
-        public int ViolationCount { get => _violations; set { _violations = value; OnPropertyChanged(); } }
+        public int ViolationCount
+        {
+            get => _violations;
+            set
+            {
+                _violations = value;
+                OnPropertyChanged();
+                if (_violations > 0 && !HasViolation)
+                {
+                    HasViolation = true;
+                }
+            }
+        }
         public bool IsLeaveRequested { get => _isLeaveRequested; set { _isLeaveRequested = value; OnPropertyChanged(); } }
         public bool IsOffline { get => _isOffline; set { _isOffline = value; OnPropertyChanged(); } }
-        public bool HasViolation => ViolationCount > 0;
+        public bool HasViolation { get => _hasViolation; set { _hasViolation = value; OnPropertyChanged(); } }
+        public bool HasHardwareViolation { get => _hasHardwareViolation; set { _hasHardwareViolation = value; OnPropertyChanged(); } }
+        public bool IsUsingVM { get => _isUsingVm; set { _isUsingVm = value; OnPropertyChanged(); } }
+        public bool IsRemoteDesktop { get => _isRemoteDesktop; set { _isRemoteDesktop = value; OnPropertyChanged(); } }
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
@@ -923,6 +1198,12 @@ namespace AcademicSentinel.Client.Views.IMC
     }
 
     public class LogEntry { public string Timestamp { get; set; } public string StudentEmail { get; set; } public string BadgeText { get; set; } public string BadgeColor { get; set; } public string Message { get; set; } }
+
+    public class StudentMonitoringEvent
+    {
+        public string EventType { get; set; } = string.Empty;
+        public int SeverityScore { get; set; }
+    }
 
     public class ViolationLogDto
     {
