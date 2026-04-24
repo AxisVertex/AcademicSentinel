@@ -119,6 +119,8 @@ public class MonitoringHub : Hub
         if (userIdString == null) return;
         int studentId = int.Parse(userIdString);
 
+        var student = await _context.Users.FindAsync(studentId);
+
         // 1. Verify the room exists and is in Active state
         var room = await _context.Rooms.FindAsync(roomId);
         if (room == null) return;
@@ -169,7 +171,7 @@ public class MonitoringHub : Hub
         await _context.SaveChangesAsync();
 
         // 4. Notify the IMC Dashboard that the student is live!
-        await Clients.Group(roomId.ToString()).SendAsync("StudentJoined", studentId);
+        await Clients.Group(roomId.ToString()).SendAsync("StudentJoinedOrReconnected", student?.Id ?? studentId, student?.FullName ?? $"Student #{studentId}");
     }
 
     // SignalR AUTOMATICALLY triggers this if a user's app closes or internet drops
@@ -372,7 +374,7 @@ public class MonitoringHub : Hub
         }
 
         await Clients.User(studentId.ToString()).SendAsync("LeaveGranted", studentId);
-        await Clients.Group(roomId.ToString()).SendAsync("StudentSafelyLeft", studentId);
+        await Clients.Group(roomId.ToString()).SendAsync("StudentLeftSession", studentId);
         await Clients.Group(roomId.ToString()).SendAsync("LeaveApprovalUpdated", studentId, true);
     }
 
@@ -402,6 +404,6 @@ public class MonitoringHub : Hub
             await _context.SaveChangesAsync();
         }
 
-        await Clients.Group(roomId.ToString()).SendAsync("StudentSafelyLeft", studentId);
+        await Clients.Group(roomId.ToString()).SendAsync("StudentLeftSession", studentId);
     }
 }

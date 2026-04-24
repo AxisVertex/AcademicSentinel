@@ -445,6 +445,20 @@ namespace AcademicSentinel.Client.Views.IMC
                 _ = LoadParticipantsFromServerAsync();
             })));
 
+            _hubSubscriptions.Add(_hubConnection.On<int, string>("StudentJoinedOrReconnected", (studentId, studentName) => Dispatcher.InvokeAsync(() =>
+            {
+                var student = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (student != null)
+                {
+                    student.Status = "Connected";
+                    student.StatusColor = "#4CAF50";
+                }
+
+                _safelyLeftStudentIds.Remove(studentId);
+                LogActivity("SYSTEM", "SYSTEM", $"✅ SESSION JOINED / CONNECTION RESTORED. {studentName}", "#4CAF50");
+                _ = LoadParticipantsFromServerAsync();
+            })));
+
             _hubSubscriptions.Add(_hubConnection.On<int>("StudentDisconnected", (id) => Dispatcher.Invoke(() =>
             {
                 if (_safelyLeftStudentIds.Contains(id) || _permanentlyDismissedStudents.Contains(id))
@@ -554,6 +568,21 @@ namespace AcademicSentinel.Client.Views.IMC
                     LogActivity(targetStudent.Email, "LEFT", "Student left safely with instructor approval.", "#1B5E20");
                     ActiveStudents.Remove(targetStudent);
                     _leaveRequestedStateByStudentId[studentId] = false;
+                    _studentsView.Refresh();
+                    UpdateParticipantCount();
+                }
+            })));
+
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentLeftSession", studentId => Dispatcher.InvokeAsync(() =>
+            {
+                var student = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (student != null)
+                {
+                    student.Status = "Completed";
+                    student.StatusColor = "#1B5E20";
+                    LogActivity("SYSTEM", "SYSTEM", $"EXAM COMPLETED. Student exited properly. {student.Name}", "#1B5E20");
+                    _permanentlyDismissedStudents.Add(studentId);
+                    ActiveStudents.Remove(student);
                     _studentsView.Refresh();
                     UpdateParticipantCount();
                 }
