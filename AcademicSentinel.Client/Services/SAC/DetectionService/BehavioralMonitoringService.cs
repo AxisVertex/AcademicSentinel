@@ -4,8 +4,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using Microsoft.Win32;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace AcademicSentinel.Client.Services.SAC.DetectionService
@@ -27,13 +30,15 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
         [DllImport("user32.dll")]
         private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
-        [DllImport("kernel32.dll")]
-        private static extern uint GetTickCount();
-
         [StructLayout(LayoutKind.Sequential)]
         private struct LASTINPUTINFO
         {
+            public static readonly int SizeOf = Marshal.SizeOf(typeof(LASTINPUTINFO));
+
+            [MarshalAs(UnmanagedType.U4)]
             public uint cbSize;
+
+            [MarshalAs(UnmanagedType.U4)]
             public uint dwTime;
         }
 
@@ -44,6 +49,11 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
         private readonly DetectionSettings _settings;
         private readonly HashSet<string> _blacklistedProcessNames;
         private readonly Dictionary<string, DateTime> _lastReportedAtByEvent = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _syncRoot = new();
+        private readonly Queue<MonitoringDetectionEvent> _pendingBackgroundEvents = new();
+        private readonly uint _idleThresholdMs = 180000;
+        private readonly string[] _blacklistedApps = { "discord", "obs32", "obs64", "vmware", "virtualbox", "taskmgr", "TeamViewer", "AnyDesk" };
+        private readonly Dictionary<string, DateTime> _lastPbdReportedAtByApp = new(StringComparer.OrdinalIgnoreCase);
 
         private IntPtr _lastForegroundWindow;
         private bool _lastForegroundWasSac;
@@ -58,7 +68,10 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
         private int _lastReportedIdleLevel;
         private bool _isMonitoring;
+        private bool _isCurrentlyIdle;
         private DateTime _monitoringStartedAtUtc;
+        private CancellationTokenSource? _idleLoopCts;
+        private Task? _idleLoopTask;
 
         public BehavioralMonitoringService(DetectionSettings settings, IEnumerable<string> blacklistedProcessNames)
         {
@@ -71,21 +84,39 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
         public void StartMonitoring()
         {
+            StopIdleLoop();
+
             _isMonitoring = true;
+            _isCurrentlyIdle = false;
             _lastReportedIdleLevel = 0;
             _monitoringStartedAtUtc = DateTime.UtcNow;
             _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
+
+            _idleLoopCts = new CancellationTokenSource();
+            _idleLoopTask = RunIdleTrackingLoopAsync(_idleLoopCts.Token);
+
+            DisableTaskManager();
         }
 
         public void StopMonitoring()
         {
             _isMonitoring = false;
+            _isCurrentlyIdle = false;
             _copyDown = false;
             _pasteDown = false;
             _temporarilyExemptWindow = IntPtr.Zero;
             _lastReportedIdleLevel = 0;
             _lastReportedProcesses.Clear();
             _lastReportedAtByEvent.Clear();
+
+            lock (_syncRoot)
+            {
+                _pendingBackgroundEvents.Clear();
+                _lastPbdReportedAtByApp.Clear();
+            }
+
+            StopIdleLoop();
+            EnableTaskManager();
         }
 
         public IReadOnlyList<MonitoringDetectionEvent> Poll(bool isSacWindowActive)
@@ -95,6 +126,8 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
             var findings = new List<MonitoringDetectionEvent>();
 
+            DrainBackgroundEvents(findings);
+
             DetectFocus(isSacWindowActive, findings);
             DetectClipboardAndScreenshot(findings);
             DetectIdle(findings);
@@ -103,6 +136,180 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
             _lastForegroundWasSac = isSacWindowActive;
 
             return findings;
+        }
+
+        private async Task RunIdleTrackingLoopAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    if (_isMonitoring && _settings.EnableIdleDetection)
+                    {
+                        EvaluateHardIdle();
+                    }
+
+                    if (_isMonitoring && _settings.EnableProcessDetection)
+                    {
+                        ScanAndHandleBlacklistedProcesses();
+                    }
+
+                    await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        private void DrainBackgroundEvents(ICollection<MonitoringDetectionEvent> findings)
+        {
+            lock (_syncRoot)
+            {
+                while (_pendingBackgroundEvents.Count > 0)
+                {
+                    findings.Add(_pendingBackgroundEvents.Dequeue());
+                }
+            }
+        }
+
+        private void EvaluateHardIdle()
+        {
+            uint idleTime = GetIdleTimeMs();
+            bool shouldReportIdle = false;
+
+            lock (_syncRoot)
+            {
+                if (idleTime >= _idleThresholdMs && !_isCurrentlyIdle)
+                {
+                    _isCurrentlyIdle = true;
+                    shouldReportIdle = true;
+                }
+                else if (idleTime < _idleThresholdMs && _isCurrentlyIdle)
+                {
+                    _isCurrentlyIdle = false;
+                }
+
+                if (shouldReportIdle)
+                {
+                    _pendingBackgroundEvents.Enqueue(new MonitoringDetectionEvent
+                    {
+                        EventType = DetectionConstants.EventIdle,
+                        Description = "Student has been inactive for over 3 minutes.",
+                        SeverityScore = 10,
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
+            }
+        }
+
+        private void ScanAndHandleBlacklistedProcesses()
+        {
+            Process[] activeProcesses;
+            try
+            {
+                activeProcesses = Process.GetProcesses();
+            }
+            catch
+            {
+                return;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            foreach (var process in activeProcesses)
+            {
+                using (process)
+                {
+                    string processName;
+                    try
+                    {
+                        processName = process.ProcessName;
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(processName) || !IsBlacklistedApp(processName))
+                        continue;
+
+                    bool shouldReport;
+                    lock (_syncRoot)
+                    {
+                        shouldReport = !_lastPbdReportedAtByApp.TryGetValue(processName, out DateTime lastReportedAt)
+                            || (now - lastReportedAt).TotalSeconds >= 30;
+
+                        if (shouldReport)
+                        {
+                            _lastPbdReportedAtByApp[processName] = now;
+                        }
+                    }
+
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch
+                    {
+                    }
+
+                    if (!shouldReport)
+                        continue;
+
+                    lock (_syncRoot)
+                    {
+                        _pendingBackgroundEvents.Enqueue(new MonitoringDetectionEvent
+                        {
+                            EventType = "PBD",
+                            Description = $"Restricted Application Opened: {processName}",
+                            SeverityScore = 30,
+                            Timestamp = now
+                        });
+                    }
+                }
+            }
+        }
+
+        private bool IsBlacklistedApp(string processName)
+        {
+            return _blacklistedApps.Any(app => app.Equals(processName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static void DisableTaskManager()
+        {
+            try
+            {
+                using RegistryKey? systemPolicies = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\System", true);
+                systemPolicies?.SetValue("DisableTaskMgr", 1, RegistryValueKind.DWord);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to disable Task Manager: {ex.Message}");
+            }
+        }
+
+        private static void EnableTaskManager()
+        {
+            try
+            {
+                using RegistryKey? systemPolicies = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\System", true);
+                if (systemPolicies?.GetValue("DisableTaskMgr") is not null)
+                {
+                    systemPolicies.DeleteValue("DisableTaskMgr", false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to enable Task Manager: {ex.Message}");
+            }
+        }
+
+        private void StopIdleLoop()
+        {
+            _idleLoopCts?.Cancel();
+            _idleLoopCts?.Dispose();
+            _idleLoopCts = null;
+            _idleLoopTask = null;
         }
 
         private void DetectFocus(bool isSacWindowActive, ICollection<MonitoringDetectionEvent> findings)
@@ -326,16 +533,20 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
         private static int GetSystemIdleSeconds()
         {
-            LASTINPUTINFO lastInputInfo = new LASTINPUTINFO
+            return (int)(GetIdleTimeMs() / 1000);
+        }
+
+        private static uint GetIdleTimeMs()
+        {
+            LASTINPUTINFO lastInPut = new LASTINPUTINFO
             {
                 cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>()
             };
 
-            if (!GetLastInputInfo(ref lastInputInfo))
+            if (!GetLastInputInfo(ref lastInPut))
                 return 0;
 
-            uint elapsed = GetTickCount() - lastInputInfo.dwTime;
-            return (int)(elapsed / 1000);
+            return (uint)Environment.TickCount - lastInPut.dwTime;
         }
     }
 }

@@ -6,6 +6,7 @@ using AcademicSentinel.Server.Models;
 using AcademicSentinel.Server.DTOs;
 using System.Security.Claims;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AcademicSentinel.Server.Hubs;
 
@@ -13,11 +14,13 @@ namespace AcademicSentinel.Server.Hubs;
 public class MonitoringHub : Hub
 {
     private readonly AppDbContext _context;
+    private readonly IServiceScopeFactory _scopeFactory;
     private static readonly ConcurrentDictionary<int, bool> MonitoringStates = new();
 
-    public MonitoringHub(AppDbContext context)
+    public MonitoringHub(AppDbContext context, IServiceScopeFactory scopeFactory)
     {
         _context = context;
+        _scopeFactory = scopeFactory;
     }
 
     // =======================================================
@@ -155,11 +158,32 @@ public class MonitoringHub : Hub
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdString != null)
+        if (userIdString != null && int.TryParse(userIdString, out int disconnectedUserId))
         {
-            int studentId = int.Parse(userIdString);
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var disconnectedUser = await db.Users.FindAsync(disconnectedUserId);
 
-            var hasCompletedSessionParticipant = await _context.SessionParticipants
+            if (disconnectedUser != null && string.Equals(disconnectedUser.Role, "Instructor", StringComparison.OrdinalIgnoreCase))
+            {
+                var activeRoom = await db.Rooms
+                    .FirstOrDefaultAsync(r => r.InstructorId == disconnectedUser.Id && r.Status == "Active");
+
+                if (activeRoom != null)
+                {
+                    activeRoom.Status = "Ended";
+                    MonitoringStates[activeRoom.Id] = false;
+                    await db.SaveChangesAsync();
+                    await Clients.Group(activeRoom.Id.ToString()).SendAsync("SessionInterrupted");
+                }
+
+                await base.OnDisconnectedAsync(exception);
+                return;
+            }
+
+            int studentId = disconnectedUserId;
+
+            var hasCompletedSessionParticipant = await db.SessionParticipants
                 .AnyAsync(p => p.StudentId == studentId && p.ConnectionStatus == "Completed");
 
             if (hasCompletedSessionParticipant)
@@ -169,7 +193,7 @@ public class MonitoringHub : Hub
             }
 
             // Find any active exam this student was in
-            var activeParticipants = await _context.SessionParticipants
+            var activeParticipants = await db.SessionParticipants
                 .Where(p => p.StudentId == studentId && p.ConnectionStatus == "Connected")
                 .ToListAsync();
 
@@ -180,12 +204,13 @@ public class MonitoringHub : Hub
                 participant.DisconnectedAt = DateTime.UtcNow;
             }
 
-            await _context.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
             foreach (var participant in activeParticipants)
             {
                 // Instantly alert the Teacher's Dashboard (IMC)!
                 await Clients.Group(participant.RoomId.ToString()).SendAsync("StudentDisconnected", studentId);
+                await Clients.Group(participant.RoomId.ToString()).SendAsync("StudentConnectionLost", studentId);
             }
         }
 

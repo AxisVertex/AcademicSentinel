@@ -389,6 +389,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 if (targetStudent == null)
                     return;
 
+                targetStudent.IsOffline = true;
                 targetStudent.Status = "Offline/Disconnected";
                 targetStudent.StatusColor = "#D32F2F";
                 targetStudent.IsLeaveRequested = false;
@@ -397,6 +398,21 @@ namespace AcademicSentinel.Client.Views.IMC
                 _studentsView.Refresh();
 
                 _ = LoadParticipantsFromServerAsync();
+            }));
+
+            _hubConnection.On<int>("StudentConnectionLost", id => Dispatcher.Invoke(() =>
+            {
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == id);
+                if (targetStudent == null)
+                    return;
+
+                targetStudent.IsOffline = true;
+                targetStudent.Status = "Offline/Disconnected";
+                targetStudent.StatusColor = "#D32F2F";
+                _leaveRequestedStateByStudentId[id] = false;
+
+                LogActivity(targetStudent.Email, "SYSTEM", "⚠️ CONNECTION LOST. Student dropped offline.", "#D32F2F");
+                _studentsView.Refresh();
             }));
 
             _hubConnection.On<ViolationAlertPayload>("ViolationDetected", payload => Dispatcher.Invoke(() =>
@@ -551,8 +567,17 @@ namespace AcademicSentinel.Client.Views.IMC
                                 ? p.ProfileImageUrl
                                 : $"{ApiEndpoints.BaseUrl}{p.ProfileImageUrl}"),
                         IsLeaveRequested = isLeaveRequested,
-                        Status = isLeaveRequested ? "Wants to Leave" : "Connected",
-                        StatusColor = isLeaveRequested ? "#FF9800" : "#4CAF50"
+                        IsOffline = string.Equals(p.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase),
+                        Status = isLeaveRequested
+                            ? "Wants to Leave"
+                            : (string.Equals(p.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase)
+                                ? "Offline/Disconnected"
+                                : "Connected"),
+                        StatusColor = isLeaveRequested
+                            ? "#FF9800"
+                            : (string.Equals(p.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase)
+                                ? "#D32F2F"
+                                : "#4CAF50")
                     });
                 }
 
@@ -862,6 +887,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private string _status, _statusColor;
         private int _violations;
         private bool _isLeaveRequested;
+        private bool _isOffline;
         public string Email { get; set; }
         public string ProfileImageUrl { get; set; } = string.Empty;
         public Visibility HasProfileImageVisibility => string.IsNullOrWhiteSpace(ProfileImageUrl) ? Visibility.Collapsed : Visibility.Visible;
@@ -870,6 +896,7 @@ namespace AcademicSentinel.Client.Views.IMC
         public string StatusColor { get => _statusColor; set { _statusColor = value; OnPropertyChanged(); } }
         public int ViolationCount { get => _violations; set { _violations = value; OnPropertyChanged(); } }
         public bool IsLeaveRequested { get => _isLeaveRequested; set { _isLeaveRequested = value; OnPropertyChanged(); } }
+        public bool IsOffline { get => _isOffline; set { _isOffline = value; OnPropertyChanged(); } }
         public bool HasViolation => ViolationCount > 0;
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string n = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
@@ -884,6 +911,7 @@ namespace AcademicSentinel.Client.Views.IMC
         public string EnrollmentSource { get; set; } = string.Empty;
         public string ParticipationStatus { get; set; } = string.Empty;
         public string ConnectionStatus { get; set; } = string.Empty;
+        public bool IsOffline { get; set; }
     }
 
     public class ParticipantOverviewRow
