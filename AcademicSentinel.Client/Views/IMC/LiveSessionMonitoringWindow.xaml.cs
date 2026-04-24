@@ -459,6 +459,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 if (targetStudent == null)
                     return;
 
+                targetStudent.IsOffline = true;
                 targetStudent.Status = "Offline/Disconnected";
                 targetStudent.StatusColor = "#D32F2F";
                 targetStudent.IsLeaveRequested = false;
@@ -469,7 +470,24 @@ namespace AcademicSentinel.Client.Views.IMC
                 _ = LoadParticipantsFromServerAsync();
             })));
 
+
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentConnectionLost", id => _ = Dispatcher.InvokeAsync(() =>
+            {
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == id);
+                if (targetStudent == null)
+                    return;
+
+                targetStudent.IsOffline = true;
+                targetStudent.Status = "Offline/Disconnected";
+                targetStudent.StatusColor = "#D32F2F";
+                _leaveRequestedStateByStudentId[id] = false;
+
+                LogActivity(targetStudent.Email, "SYSTEM", "⚠️ CONNECTION LOST. Student dropped offline.", "#D32F2F");
+                _studentsView.Refresh();
+            })));
+
             _hubSubscriptions.Add(_hubConnection.On<ViolationAlertPayload>("ViolationDetected", payload => _ = Dispatcher.InvokeAsync(() =>
+
             {
                 if (payload == null) return;
 
@@ -591,7 +609,8 @@ namespace AcademicSentinel.Client.Views.IMC
 
         private async void BtnApproveLeave_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is not Button btn || btn.DataContext is not LiveStudentStatus student)
+            if (sender is not Button btn || btn.DataContext is not 
+            student)
                 return;
 
             try
@@ -664,8 +683,17 @@ namespace AcademicSentinel.Client.Views.IMC
                                 : $"{ApiEndpoints.BaseUrl}{p.ProfileImageUrl}"),
                         HasViolation = _studentsWithViolations.Contains(p.StudentId),
                         IsLeaveRequested = isLeaveRequested,
-                        Status = isLeaveRequested ? "Wants to Leave" : "Connected",
-                        StatusColor = isLeaveRequested ? "#FF9800" : "#4CAF50"
+                        IsOffline = string.Equals(p.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase),
+                        Status = isLeaveRequested
+                            ? "Wants to Leave"
+                            : (string.Equals(p.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase)
+                                ? "Offline/Disconnected"
+                                : "Connected"),
+                        StatusColor = isLeaveRequested
+                            ? "#FF9800"
+                            : (string.Equals(p.ConnectionStatus, "Disconnected", StringComparison.OrdinalIgnoreCase)
+                                ? "#D32F2F"
+                                : "#4CAF50")
                     });
                 }
 
@@ -1115,6 +1143,7 @@ namespace AcademicSentinel.Client.Views.IMC
         private string _status, _statusColor;
         private int _violations;
         private bool _isLeaveRequested;
+        private bool _isOffline;
         private bool _hasViolation;
         private bool _hasHardwareViolation;
         private bool _isUsingVm;
@@ -1139,6 +1168,7 @@ namespace AcademicSentinel.Client.Views.IMC
             }
         }
         public bool IsLeaveRequested { get => _isLeaveRequested; set { _isLeaveRequested = value; OnPropertyChanged(); } }
+        public bool IsOffline { get => _isOffline; set { _isOffline = value; OnPropertyChanged(); } }
         public bool HasViolation { get => _hasViolation; set { _hasViolation = value; OnPropertyChanged(); } }
         public bool HasHardwareViolation { get => _hasHardwareViolation; set { _hasHardwareViolation = value; OnPropertyChanged(); } }
         public bool IsUsingVM { get => _isUsingVm; set { _isUsingVm = value; OnPropertyChanged(); } }
@@ -1156,6 +1186,7 @@ namespace AcademicSentinel.Client.Views.IMC
         public string EnrollmentSource { get; set; } = string.Empty;
         public string ParticipationStatus { get; set; } = string.Empty;
         public string ConnectionStatus { get; set; } = string.Empty;
+        public bool IsOffline { get; set; }
     }
 
     public class ParticipantOverviewRow
