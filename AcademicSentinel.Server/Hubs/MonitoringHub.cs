@@ -178,7 +178,47 @@ public class MonitoringHub : Hub
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdString != null && int.TryParse(userIdString, out var studentId))
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+
+        if (string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase)
+            && userIdString != null
+            && int.TryParse(userIdString, out var instructorId))
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            try
+            {
+                var activeRoom = await db.Rooms
+                    .Where(r => r.InstructorId == instructorId && r.Status == "Active")
+                    .OrderByDescending(r => r.Id)
+                    .FirstOrDefaultAsync();
+
+                if (activeRoom != null)
+                {
+                    var activeSession = await db.ExamSessions
+                        .Where(s => s.RoomId == activeRoom.Id && s.Status == "Active")
+                        .OrderByDescending(s => s.StartTime)
+                        .FirstOrDefaultAsync();
+
+                    activeRoom.Status = "Ended";
+                    if (activeSession != null)
+                    {
+                        activeSession.Status = "Ended";
+                        activeSession.EndTime = DateTime.UtcNow;
+                    }
+
+                    await db.SaveChangesAsync();
+
+                    await Clients.Group(activeRoom.Id.ToString()).SendAsync("SessionInterrupted", activeRoom.Id);
+                }
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // best-effort instructor disconnect handling under concurrent drops
+            }
+        }
+        else if (userIdString != null && int.TryParse(userIdString, out var studentId))
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -194,14 +234,12 @@ public class MonitoringHub : Hub
                     return;
                 }
 
-                // Find any active exam this student was in
                 var activeParticipants = await db.SessionParticipants
                     .Where(p => p.StudentId == studentId && p.ConnectionStatus == "Connected")
                     .ToListAsync();
 
                 foreach (var participant in activeParticipants)
                 {
-                    // Update database to show they dropped
                     participant.ConnectionStatus = "Disconnected";
                     participant.DisconnectedAt = DateTime.UtcNow;
                 }
@@ -210,8 +248,9 @@ public class MonitoringHub : Hub
 
                 foreach (var participant in activeParticipants)
                 {
-                    // Instantly alert the Teacher's Dashboard (IMC)!
-                    await Clients.Group(participant.RoomId.ToString()).SendAsync("StudentDisconnected", studentId);
+                    var roomGroup = participant.RoomId.ToString();
+                    await Clients.Group(roomGroup).SendAsync("StudentDisconnected", studentId);
+                    await Clients.Group(roomGroup).SendAsync("StudentConnectionLost", studentId);
                 }
             }
             catch (DbUpdateConcurrencyException)

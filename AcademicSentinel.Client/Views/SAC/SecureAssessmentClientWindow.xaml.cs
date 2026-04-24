@@ -627,28 +627,59 @@ namespace AcademicSentinel.Client.Views.SAC
                             return;
 
                         _detectorsRunning = true;
-                        if (_detectorRuntime != null)
-                        {
-                            _detectorRuntime.IsPaused = false;
-                        }
-
-                        TxtMonitoringStatus.Text = "Monitoring Active - You cannot leave during the session";
-                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                        TxtMonitoringStatus.Text = "Monitoring resumes in 10 seconds...";
+                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
 
                         if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
                         {
-                            compactStatus.Text = "Monitoring: ACTIVE";
-                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                            compactStatus.Text = "Monitoring: RESUMING";
+                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
                         }
 
                         if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
                         {
-                            headerStatus.Text = "Monitoring: ACTIVE";
-                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                            headerStatus.Text = "Monitoring: RESUMING";
+                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
                         }
 
-                        // Soft lock remains active: do not alter phase/leave-request state.
-                        UpdateHeaderSessionClock();
+                        _ = Task.Run(async () =>
+                        {
+                            for (int i = 10; i > 0; i--)
+                            {
+                                await Dispatcher.InvokeAsync(() =>
+                                {
+                                    TxtMonitoringStatus.Text = $"Monitoring resumes in {i} seconds...";
+                                });
+
+                                await Task.Delay(TimeSpan.FromSeconds(1));
+                            }
+
+                            await Dispatcher.InvokeAsync(() =>
+                            {
+                                if (_detectorRuntime != null)
+                                {
+                                    _detectorRuntime.IsPaused = false;
+                                }
+
+                                TxtMonitoringStatus.Text = "Monitoring Active - You cannot leave during the session";
+                                TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+
+                                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactResumeStatus)
+                                {
+                                    compactResumeStatus.Text = "Monitoring: ACTIVE";
+                                    compactResumeStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                                }
+
+                                if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerResumeStatus)
+                                {
+                                    headerResumeStatus.Text = "Monitoring: ACTIVE";
+                                    headerResumeStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                                }
+
+                                // Soft lock remains active: do not alter phase/leave-request state.
+                                UpdateHeaderSessionClock();
+                            });
+                        });
                     });
                 });
 

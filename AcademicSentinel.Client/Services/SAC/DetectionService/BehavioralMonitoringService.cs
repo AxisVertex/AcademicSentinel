@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using Microsoft.Win32;
 
 namespace AcademicSentinel.Client.Services.SAC.DetectionService
 {
@@ -41,6 +42,27 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
         private const int VK_C = 0x43;
         private const int VK_V = 0x56;
 
+        private static readonly string[] _blacklistedApps =
+        {
+            "discord",
+            "obs32",
+            "taskmgr",
+            "processhacker",
+            "procmon",
+            "procexp",
+            "windbg",
+            "x64dbg",
+            "ollydbg",
+            "dnspy",
+            "ida",
+            "fiddler",
+            "cheatengine",
+            "teamviewer",
+            "anydesk",
+            "ultravnc",
+            "gotomypc"
+        };
+
         private readonly DetectionSettings _settings;
         private readonly HashSet<string> _blacklistedProcessNames;
         private readonly Dictionary<string, DateTime> _lastReportedAtByEvent = new(StringComparer.OrdinalIgnoreCase);
@@ -71,6 +93,7 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
         public void StartMonitoring()
         {
+            DisableTaskManager();
             _isMonitoring = true;
             _lastForegroundWindow = GetForegroundWindow();
             _lastWindowName = GetWindowName(_lastForegroundWindow);
@@ -81,6 +104,7 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
         public void StopMonitoring()
         {
+            EnableTaskManager();
             _isMonitoring = false;
             _copyDown = false;
             _pasteDown = false;
@@ -100,7 +124,7 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
             DetectFocus(isSacWindowActive, findings);
             DetectClipboardAndScreenshot(findings);
             DetectIdle(findings);
-            DetectBlacklistedProcesses(findings);
+            ScanAndHandleBlacklistedProcesses(findings);
 
             _lastForegroundWasSac = isSacWindowActive;
 
@@ -240,7 +264,7 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
             }
         }
 
-        private void DetectBlacklistedProcesses(ICollection<MonitoringDetectionEvent> findings)
+        private void ScanAndHandleBlacklistedProcesses(ICollection<MonitoringDetectionEvent> findings)
         {
             if (!_settings.EnableProcessDetection)
                 return;
@@ -260,7 +284,8 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var detected = _blacklistedProcessNames
+            var detected = _blacklistedApps
+                .Concat(_blacklistedProcessNames)
                 .Where(running.Contains)
                 .OrderBy(p => p)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -278,6 +303,35 @@ namespace AcademicSentinel.Client.Services.SAC.DetectionService
 
             AddEvent(findings, DetectionConstants.EventProcessDetected, 3,
                 $"Unauthorized process detected: {string.Join(", ", detected.Take(5))}", 5);
+        }
+
+        private void DetectBlacklistedProcesses(ICollection<MonitoringDetectionEvent> findings)
+        {
+            ScanAndHandleBlacklistedProcesses(findings);
+        }
+
+        private static void DisableTaskManager()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\System", writable: true);
+                key?.SetValue("DisableTaskMgr", 1, RegistryValueKind.DWord);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void EnableTaskManager()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\System", writable: true);
+                key?.SetValue("DisableTaskMgr", 0, RegistryValueKind.DWord);
+            }
+            catch
+            {
+            }
         }
 
         private void AddEvent(ICollection<MonitoringDetectionEvent> findings, string eventType, int severity, string description, int cooldownSeconds)
