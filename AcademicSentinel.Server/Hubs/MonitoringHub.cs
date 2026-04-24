@@ -176,33 +176,11 @@ public class MonitoringHub : Hub
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdString != null && int.TryParse(userIdString, out int disconnectedUserId))
+        if (userIdString != null && int.TryParse(userIdString, out var studentId))
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var disconnectedUser = await db.Users.FindAsync(disconnectedUserId);
 
-            // INSTRUCTOR DISCONNECT LOGIC
-            if (disconnectedUser != null && string.Equals(disconnectedUser.Role, "Instructor", StringComparison.OrdinalIgnoreCase))
-            {
-                var activeRoom = await db.Rooms
-                    .FirstOrDefaultAsync(r => r.InstructorId == disconnectedUser.Id && r.Status == "Active");
-
-                if (activeRoom != null)
-                {
-                    activeRoom.Status = "Ended";
-                    MonitoringStates[activeRoom.Id] = false;
-                    await db.SaveChangesAsync();
-                    await Clients.Group(activeRoom.Id.ToString()).SendAsync("SessionInterrupted");
-                }
-
-                await base.OnDisconnectedAsync(exception);
-                return;
-            }
-
-            int studentId = disconnectedUserId;
-
-            // STUDENT DISCONNECT LOGIC (With Thread Concurrency Protection)
             try
             {
                 var hasCompletedSessionParticipant = await db.SessionParticipants
@@ -232,7 +210,6 @@ public class MonitoringHub : Hub
                 {
                     // Instantly alert the Teacher's Dashboard (IMC)!
                     await Clients.Group(participant.RoomId.ToString()).SendAsync("StudentDisconnected", studentId);
-                    await Clients.Group(participant.RoomId.ToString()).SendAsync("StudentConnectionLost", studentId);
                 }
             }
             catch (DbUpdateConcurrencyException)
