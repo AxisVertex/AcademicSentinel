@@ -54,6 +54,10 @@ namespace AcademicSentinel.Server.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("EventType")
                         .IsRequired()
                         .HasColumnType("TEXT");

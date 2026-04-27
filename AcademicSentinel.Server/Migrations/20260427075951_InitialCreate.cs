@@ -38,6 +38,7 @@ namespace AcademicSentinel.Server.Migrations
                     RoomId = table.Column<int>(type: "INTEGER", nullable: false),
                     StudentId = table.Column<int>(type: "INTEGER", nullable: false),
                     EventType = table.Column<string>(type: "TEXT", nullable: false),
+                    Description = table.Column<string>(type: "TEXT", nullable: false),
                     SeverityScore = table.Column<int>(type: "INTEGER", nullable: false),
                     Timestamp = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
