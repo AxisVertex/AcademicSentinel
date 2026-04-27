@@ -172,6 +172,19 @@ public class MonitoringHub : Hub
 
         // 4. Notify the IMC Dashboard that the student is live!
         await Clients.Group(roomId.ToString()).SendAsync("StudentJoinedOrReconnected", student?.Id ?? studentId, student?.FullName ?? $"Student #{studentId}");
+
+        var sessionJoinedEvent = new MonitoringEvent
+        {
+            EventType = "SYSTEM",
+            Description = "✅ SESSION JOINED / CONNECTION RESTORED.",
+            SeverityScore = 0,
+            RoomId = roomId,
+            StudentId = studentId,
+            Timestamp = DateTime.UtcNow
+        };
+
+        _context.MonitoringEvents.Add(sessionJoinedEvent);
+        await _context.SaveChangesAsync();
     }
 
     // SignalR AUTOMATICALLY triggers this if a user's app closes or internet drops
@@ -242,6 +255,16 @@ public class MonitoringHub : Hub
                 {
                     participant.ConnectionStatus = "Disconnected";
                     participant.DisconnectedAt = DateTime.UtcNow;
+
+                    db.MonitoringEvents.Add(new MonitoringEvent
+                    {
+                        EventType = "SYSTEM",
+                        Description = "⚠️ CONNECTION LOST. Student dropped offline.",
+                        SeverityScore = 0,
+                        RoomId = participant.RoomId,
+                        StudentId = studentId,
+                        Timestamp = DateTime.UtcNow
+                    });
                 }
 
                 await db.SaveChangesAsync();
@@ -326,6 +349,7 @@ public class MonitoringHub : Hub
             RoomId = roomId,
             StudentId = studentId,
             EventType = eventData.EventType,
+            Description = eventData.Description,
             SeverityScore = eventData.SeverityScore,
             Timestamp = DateTime.UtcNow
         };

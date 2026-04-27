@@ -211,6 +211,16 @@ namespace AcademicSentinel.Client.Views.IMC
             FetchRoomStatus();
         }
 
+        private void BtnSessionHistory_Click(object sender, RoutedEventArgs e)
+        {
+            var sessionHistoryWindow = new SessionHistoryListWindow(CurrentRoomId)
+            {
+                Owner = this
+            };
+
+            sessionHistoryWindow.ShowDialog();
+        }
+
         private void SessionAction_Click(object sender, RoutedEventArgs e) => new LiveSessionMonitoringWindow(CurrentRoomId, TxtRoomTitle.Text).Show();
         private async void BtnGenerateCode_Click(object sender, RoutedEventArgs e) { /* Code Generation Logic */ }
         private async void BtnForceEndStuckSession_Click(object sender, RoutedEventArgs e)

@@ -161,4 +161,153 @@ public class ReportsController : ControllerBase
 
         return Ok(report);
     }
+
+    // GET: api/reports/rooms/{roomId}/sessions
+    [HttpGet("rooms/{roomId}/sessions")]
+    public async Task<ActionResult<List<SessionArchiveDto>>> GetCompletedSessionsForRoom(int roomId)
+    {
+        var room = await _context.Rooms.FindAsync(roomId);
+        if (room == null)
+            return NotFound("Room not found.");
+
+        var sessions = await _context.ExamSessions
+            .Where(s => s.RoomId == roomId && s.Status == "Completed")
+            .OrderByDescending(s => s.StartTime)
+            .ToListAsync();
+
+        var result = new List<SessionArchiveDto>();
+
+        foreach (var session in sessions)
+        {
+            var sessionStart = session.StartTime;
+            var sessionEnd = session.EndTime ?? DateTime.UtcNow;
+
+            var attendeeCount = await _context.SessionParticipants
+                .Where(p => p.RoomId == roomId
+                            && p.JoinedAt <= sessionEnd
+                            && (p.DisconnectedAt == null || p.DisconnectedAt >= sessionStart))
+                .Select(p => p.StudentId)
+                .Distinct()
+                .CountAsync();
+
+            var totalViolations = await _context.MonitoringEvents
+                .Where(e => e.RoomId == roomId
+                            && e.Timestamp >= sessionStart
+                            && e.Timestamp <= sessionEnd
+                            && e.SeverityScore > 0)
+                .CountAsync();
+
+            result.Add(new SessionArchiveDto
+            {
+                SessionId = session.Id,
+                StartTime = session.StartTime,
+                EndTime = session.EndTime,
+                Duration = FormatDuration(session.StartTime, session.EndTime),
+                AttendeeCount = attendeeCount,
+                TotalViolations = totalViolations
+            });
+        }
+
+        return Ok(result);
+    }
+
+    // GET: api/reports/sessions/{sessionId}/students
+    [HttpGet("sessions/{sessionId}/students")]
+    public async Task<ActionResult<List<SessionStudentDto>>> GetSessionStudents(int sessionId)
+    {
+        var session = await _context.ExamSessions.FindAsync(sessionId);
+        if (session == null)
+            return NotFound("Session not found.");
+
+        var sessionStart = session.StartTime;
+        var sessionEnd = session.EndTime ?? DateTime.UtcNow;
+
+        var participantStudentIds = await _context.SessionParticipants
+            .Where(p => p.RoomId == session.RoomId
+                        && p.JoinedAt <= sessionEnd
+                        && (p.DisconnectedAt == null || p.DisconnectedAt >= sessionStart))
+            .Select(p => p.StudentId)
+            .Distinct()
+            .ToListAsync();
+
+        var eventStudentIds = await _context.MonitoringEvents
+            .Where(e => e.RoomId == session.RoomId
+                        && e.Timestamp >= sessionStart
+                        && e.Timestamp <= sessionEnd)
+            .Select(e => e.StudentId)
+            .Distinct()
+            .ToListAsync();
+
+        var studentIds = participantStudentIds
+            .Union(eventStudentIds)
+            .Distinct()
+            .ToList();
+
+        var users = await _context.Users
+            .Where(u => studentIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u);
+
+        var allSessionLogs = await _context.MonitoringEvents
+            .Where(e => e.RoomId == session.RoomId
+                        && studentIds.Contains(e.StudentId)
+                        && e.Timestamp >= sessionStart
+                        && e.Timestamp <= sessionEnd)
+            .OrderBy(e => e.Timestamp)
+            .ToListAsync();
+
+        var result = new List<SessionStudentDto>();
+
+        foreach (var studentId in studentIds)
+        {
+            var logs = allSessionLogs
+                .Where(e => e.StudentId == studentId)
+                .Select(e => new SessionLogDto
+                {
+                    EventType = e.EventType,
+                    Description = e.Description,
+                    SeverityScore = e.SeverityScore,
+                    Timestamp = e.Timestamp
+                })
+                .ToList();
+
+            var riskScore = logs.Sum(l => l.SeverityScore);
+            var riskLevel = riskScore >= 50
+                ? "CHEATING"
+                : riskScore >= 20
+                    ? "SUSPICIOUS"
+                    : "SAFE";
+
+            users.TryGetValue(studentId, out var student);
+
+            result.Add(new SessionStudentDto
+            {
+                StudentId = studentId,
+                Name = student?.FullName ?? $"Student #{studentId}",
+                Email = student?.Email ?? string.Empty,
+                RiskScore = riskScore,
+                RiskLevel = riskLevel,
+                ViolationCount = logs.Count(l => l.SeverityScore > 0),
+                Logs = logs
+            });
+        }
+
+        return Ok(result.OrderBy(s => s.Name).ToList());
+    }
+
+    private static string FormatDuration(DateTime startTime, DateTime? endTime)
+    {
+        var effectiveEnd = endTime ?? DateTime.UtcNow;
+        var duration = effectiveEnd - startTime;
+
+        if (duration < TimeSpan.Zero)
+            duration = TimeSpan.Zero;
+
+        var totalHours = (int)duration.TotalHours;
+        var minutes = duration.Minutes;
+
+        if (totalHours > 0)
+            return $"{totalHours}h {minutes}m";
+
+        return $"{minutes}m";
+    }
 }

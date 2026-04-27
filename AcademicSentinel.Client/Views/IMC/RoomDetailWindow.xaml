@@ -109,6 +109,8 @@
             </Setter>
         </Style>
 
+        <Style x:Key="MaterialDesignOutlinedButton" TargetType="Button" BasedOn="{StaticResource OutlineBtn}"/>
+
         <Style x:Key="DangerBtn" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource FEUDangerBrush}"/>
             <Setter Property="Foreground" Value="White"/>
@@ -273,7 +275,12 @@
                                 Margin="0,0,8,0"/>
                         <Button Content="Force End Stuck Session"
                                 Style="{StaticResource DangerBtn}"
-                                Click="BtnForceEndStuckSession_Click"/>
+                            Click="BtnForceEndStuckSession_Click"/>
+                        <Button x:Name="BtnSessionHistory"
+                            Content="Session History"
+                            Click="BtnSessionHistory_Click"
+                            Margin="8,0,0,0"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
