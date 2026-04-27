@@ -116,23 +116,28 @@ public class MonitoringHub : Hub
     {
         try
         {
-            var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (userIdString == null) return;
-            int studentId = int.Parse(userIdString);
-
-            var room = await _context.Rooms.FindAsync(roomId);
-            if (room == null) return;
-
-            if (room.Status != "Active")
+            var userIdString = Context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null)
             {
-                await Clients.Caller.SendAsync("JoinFailed", "Cannot join room: the instructor has not started the session or has ended it.");
+                await Clients.Caller.SendAsync("JoinFailed", "User identity not found.");
                 return;
             }
 
-            var activeSession = await _context.ExamSessions
-                .Where(s => s.RoomId == roomId && s.Status == "Active")
-                .OrderByDescending(s => s.StartTime)
-                .FirstOrDefaultAsync();
+            int studentId = int.Parse(userIdString);
+
+            var studentUser = await _context.Users.FindAsync(studentId);
+            if (studentUser == null)
+            {
+                await Clients.Caller.SendAsync("JoinFailed", "Student record not found in database.");
+                return;
+            }
+
+            var room = await _context.Rooms.FindAsync(roomId);
+            if (room == null || room.Status != "Active")
+            {
+                await Clients.Caller.SendAsync("JoinFailed", "Cannot join room: session is inactive.");
+                return;
+            }
 
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
 
@@ -141,10 +146,7 @@ public class MonitoringHub : Hub
                 .OrderByDescending(p => p.JoinedAt)
                 .FirstOrDefaultAsync();
 
-            bool shouldCreateNewParticipant = participant == null
-                || (activeSession != null && participant.JoinedAt < activeSession.StartTime);
-
-            if (shouldCreateNewParticipant)
+            if (participant == null || participant.ConnectionStatus == "Completed")
             {
                 participant = new SessionParticipant
                 {
@@ -157,36 +159,32 @@ public class MonitoringHub : Hub
             }
             else
             {
+                // Update existing record for Reconnection
                 participant.ConnectionStatus = "Connected";
                 participant.JoinedAt = DateTime.UtcNow;
                 participant.DisconnectedAt = null;
             }
 
-            // Add the System Audit Log
-            var monitoringEvent = new MonitoringEvent
+            _context.MonitoringEvents.Add(new MonitoringEvent
             {
-                EventType = "SYSTEM",
-                Description = "SESSION JOINED / CONNECTION RESTORED.",
-                SeverityScore = 0,
                 RoomId = roomId,
                 StudentId = studentId,
+                EventType = "SYSTEM",
+                Description = $"✅ SESSION JOINED / CONNECTION RESTORED. ({studentUser.Email})",
+                SeverityScore = 0,
                 Timestamp = DateTime.UtcNow
-            };
-            _context.MonitoringEvents.Add(monitoringEvent);
+            });
 
-            // Perform ONE unified save to prevent EF Core crashes
             await _context.SaveChangesAsync();
 
             await Clients.Group(roomId.ToString()).SendAsync("StudentJoined", studentId);
-
-            var user = await _context.Users.FindAsync(studentId);
-            string studentName = user != null ? (user.FullName ?? user.Email) : "Student";
-            await Clients.Group(roomId.ToString()).SendAsync("StudentJoinedOrReconnected", studentId, studentName);
+            string studentDisplayName = string.IsNullOrWhiteSpace(studentUser.FullName) ? studentUser.Email : studentUser.FullName;
+            await Clients.Group(roomId.ToString()).SendAsync("StudentJoinedOrReconnected", studentId, studentDisplayName);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"JoinLiveExam Error: {ex.Message}");
-            await Clients.Caller.SendAsync("JoinFailed", "An internal error occurred while joining the exam.");
+            Console.WriteLine($"JoinLiveExam FAILED for Room {roomId} / Student {Context.User?.Identity?.Name}: {ex.ToString()}");
+            await Clients.Caller.SendAsync("JoinFailed", "An unexpected internal server error occurred while finalizing your join.");
         }
     }
 

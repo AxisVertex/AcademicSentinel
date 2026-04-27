@@ -56,6 +56,8 @@ namespace AcademicSentinel.Client.Views.SAC
         private LeaveRequestState _leaveRequestState = LeaveRequestState.Locked;
         private bool _allowClose;
         private bool _isPermanentlyDone;
+        private bool _isLeaveApproved;
+        private bool _isHandlingFailure = false;
         private readonly Queue<MonitoringEventDto> _pendingViolationQueue = new Queue<MonitoringEventDto>();
         private readonly Dictionary<string, DateTime> _lastViolationSentByType = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
@@ -758,10 +760,18 @@ namespace AcademicSentinel.Client.Views.SAC
 
                 _hubConnection.On<string>("JoinFailed", message =>
                 {
+                    if (_isHandlingFailure)
+                        return;
+
+                    _isHandlingFailure = true;
+
                     Dispatcher.Invoke(() =>
                     {
-                        MessageBox.Show(message, "Join Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        ReturnToStudentDashboard();
+                        MessageBox.Show($"Unable to join exam: {message}", "Join Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                        _isLeaveApproved = true;
+                        _ = ForceStopSignalRAsync();
+                        new StudentDashboard().Show();
+                        Close();
                     });
                 });
 
@@ -810,7 +820,19 @@ namespace AcademicSentinel.Client.Views.SAC
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Unable to connect to live session: {ex.Message}", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                if (_isHandlingFailure)
+                    return;
+
+                _isHandlingFailure = true;
+
+                Dispatcher.Invoke(() =>
+                {
+                    MessageBox.Show($"Unable to connect session: {ex.Message}", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    _isLeaveApproved = true;
+                    _ = ForceStopSignalRAsync();
+                    new StudentDashboard().Show();
+                    Close();
+                });
             }
         }
 
@@ -1212,7 +1234,7 @@ namespace AcademicSentinel.Client.Views.SAC
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
-            if (!_allowClose && !_isPermanentlyDone && _leaveRequestState != LeaveRequestState.Unlocked)
+            if (!_allowClose && !_isPermanentlyDone && !_isLeaveApproved && _leaveRequestState != LeaveRequestState.Unlocked)
             {
                 e.Cancel = true;
                 WindowState = WindowState.Minimized;
