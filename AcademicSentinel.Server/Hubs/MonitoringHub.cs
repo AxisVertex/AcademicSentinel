@@ -114,77 +114,80 @@ public class MonitoringHub : Hub
     // SAC calls this when the student enters the active exam room
     public async Task JoinLiveExam(int roomId)
     {
-        // Extract the Student's ID from their JWT
-        var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdString == null) return;
-        int studentId = int.Parse(userIdString);
-
-        var student = await _context.Users.FindAsync(studentId);
-
-        // 1. Verify the room exists and is in Active state
-        var room = await _context.Rooms.FindAsync(roomId);
-        if (room == null) return;
-
-        if (room.Status != "Active")
+        try
         {
-            // Notify the client that they cannot join yet
-            await Clients.Caller.SendAsync("JoinFailed", "Cannot join room: the instructor has not started the session or has ended it.");
-            return;
-        }
+            var userIdString = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) return;
+            int studentId = int.Parse(userIdString);
 
-        var activeSession = await _context.ExamSessions
-            .Where(s => s.RoomId == roomId && s.Status == "Active")
-            .OrderByDescending(s => s.StartTime)
-            .FirstOrDefaultAsync();
+            var room = await _context.Rooms.FindAsync(roomId);
+            if (room == null) return;
 
-        // 2. Add connection to the SignalR Room Group
-        await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
-
-        // 3. Update Database: Mark as officially "Participating" and "Connected"
-        var participant = await _context.SessionParticipants
-            .Where(p => p.RoomId == roomId && p.StudentId == studentId)
-            .OrderByDescending(p => p.JoinedAt)
-            .FirstOrDefaultAsync();
-
-        bool shouldCreateNewParticipant = participant == null
-            || (activeSession != null && participant.JoinedAt < activeSession.StartTime);
-
-        if (shouldCreateNewParticipant)
-        {
-            // First join for the current active session
-            participant = new SessionParticipant
+            if (room.Status != "Active")
             {
+                await Clients.Caller.SendAsync("JoinFailed", "Cannot join room: the instructor has not started the session or has ended it.");
+                return;
+            }
+
+            var activeSession = await _context.ExamSessions
+                .Where(s => s.RoomId == roomId && s.Status == "Active")
+                .OrderByDescending(s => s.StartTime)
+                .FirstOrDefaultAsync();
+
+            await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
+
+            var participant = await _context.SessionParticipants
+                .Where(p => p.RoomId == roomId && p.StudentId == studentId)
+                .OrderByDescending(p => p.JoinedAt)
+                .FirstOrDefaultAsync();
+
+            bool shouldCreateNewParticipant = participant == null
+                || (activeSession != null && participant.JoinedAt < activeSession.StartTime);
+
+            if (shouldCreateNewParticipant)
+            {
+                participant = new SessionParticipant
+                {
+                    RoomId = roomId,
+                    StudentId = studentId,
+                    ConnectionStatus = "Connected",
+                    JoinedAt = DateTime.UtcNow
+                };
+                _context.SessionParticipants.Add(participant);
+            }
+            else
+            {
+                participant.ConnectionStatus = "Connected";
+                participant.JoinedAt = DateTime.UtcNow;
+                participant.DisconnectedAt = null;
+            }
+
+            // Add the System Audit Log
+            var monitoringEvent = new MonitoringEvent
+            {
+                EventType = "SYSTEM",
+                Description = "SESSION JOINED / CONNECTION RESTORED.",
+                SeverityScore = 0,
                 RoomId = roomId,
                 StudentId = studentId,
-                ConnectionStatus = "Connected",
-                JoinedAt = DateTime.UtcNow
+                Timestamp = DateTime.UtcNow
             };
-            _context.SessionParticipants.Add(participant);
+            _context.MonitoringEvents.Add(monitoringEvent);
+
+            // Perform ONE unified save to prevent EF Core crashes
+            await _context.SaveChangesAsync();
+
+            await Clients.Group(roomId.ToString()).SendAsync("StudentJoined", studentId);
+
+            var user = await _context.Users.FindAsync(studentId);
+            string studentName = user != null ? (user.FullName ?? user.Email) : "Student";
+            await Clients.Group(roomId.ToString()).SendAsync("StudentJoinedOrReconnected", studentId, studentName);
         }
-        else
+        catch (Exception ex)
         {
-            // Reconnecting after a drop
-            participant.ConnectionStatus = "Connected";
-            participant.JoinedAt = DateTime.UtcNow;
-            participant.DisconnectedAt = null;
+            Console.WriteLine($"JoinLiveExam Error: {ex.Message}");
+            await Clients.Caller.SendAsync("JoinFailed", "An internal error occurred while joining the exam.");
         }
-        await _context.SaveChangesAsync();
-
-        // 4. Notify the IMC Dashboard that the student is live!
-        await Clients.Group(roomId.ToString()).SendAsync("StudentJoinedOrReconnected", student?.Id ?? studentId, student?.FullName ?? $"Student #{studentId}");
-
-        var sessionJoinedEvent = new MonitoringEvent
-        {
-            EventType = "SYSTEM",
-            Description = "✅ SESSION JOINED / CONNECTION RESTORED.",
-            SeverityScore = 0,
-            RoomId = roomId,
-            StudentId = studentId,
-            Timestamp = DateTime.UtcNow
-        };
-
-        _context.MonitoringEvents.Add(sessionJoinedEvent);
-        await _context.SaveChangesAsync();
     }
 
     // SignalR AUTOMATICALLY triggers this if a user's app closes or internet drops

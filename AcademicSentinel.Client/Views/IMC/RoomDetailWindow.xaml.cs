@@ -9,6 +9,9 @@ using System.Windows.Media.Imaging;
 using AcademicSentinel.Client.Constants;
 using AcademicSentinel.Client.Services;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using AcademicSentinel.Client.Models;
 
 namespace AcademicSentinel.Client.Views.IMC
 {
@@ -24,16 +27,12 @@ namespace AcademicSentinel.Client.Views.IMC
             CurrentRoomId = roomId;
             TxtRoomTitle.Text = roomTitle;
 
-            Sessions = new ObservableCollection<SessionItem>();
-            SessionsList.ItemsSource = Sessions;
-
             // Load Sidebar Branding
             LoadTeacherSidebarInfo();
 
             // Load Database Content
-            UpdatePaginationUI();
             FetchRoomStatus();
-            FetchPastSessions();
+            _ = LoadPastSessionsAsync();
         }
 
         private void LoadTeacherSidebarInfo()
@@ -107,52 +106,25 @@ namespace AcademicSentinel.Client.Views.IMC
 
         // ======================== DATA LOADING ========================
 
-        private async void FetchPastSessions()
+        private async Task LoadPastSessionsAsync()
         {
             try
             {
-                using (var client = new HttpClient())
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", SessionManager.JwtToken);
+
+                var response = await client.GetAsync($"{ApiEndpoints.BaseUrl}/api/reports/rooms/{CurrentRoomId}/sessions");
+
+                if (response.IsSuccessStatusCode)
                 {
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", SessionManager.JwtToken);
-                    var response = await client.GetAsync($"{ApiEndpoints.Rooms}/{CurrentRoomId}/history");
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var pastSessions = await response.Content.ReadFromJsonAsync<List<PastSessionDto>>();
-
-                        if (pastSessions != null)
-                        {
-                            Sessions.Clear();
-                            foreach (var s in pastSessions)
-                            {
-                                DateTime startTime = s.StartTime.ToLocalTime();
-                                string status = s.Status;
-
-                                string durationText = startTime.ToString("MMM dd, yyyy - hh:mm tt");
-
-                                if (s.EndTime.HasValue)
-                                {
-                                    DateTime endTime = s.EndTime.Value.ToLocalTime();
-                                    int minutes = (int)Math.Round((endTime - startTime).TotalMinutes);
-                                    durationText += $" ({minutes} mins)";
-                                }
-
-                                Sessions.Add(new SessionItem
-                                {
-                                    SessionId = $"Session {Math.Max(1, s.SessionNumber)}",
-                                    DateDuration = durationText,
-                                    StatusText = status,
-                                    Status = status,
-                                    ExamType = string.IsNullOrWhiteSpace(s.ExamType) ? "Summative" : s.ExamType,
-                                    StudentCount = s.ParticipantCount
-                                });
-                            }
-                            UpdatePaginationUI();
-                        }
-                    }
+                    var sessions = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<List<AcademicSentinel.Client.Models.SessionArchiveDto>>(response.Content);
+                    PastSessionsGrid.ItemsSource = sessions;
                 }
             }
-            catch (Exception ex) { Console.WriteLine($"History Load Error: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Unable to load archived sessions: {ex.Message}");
+            }
         }
 
         private async void FetchRoomStatus()
@@ -167,12 +139,6 @@ namespace AcademicSentinel.Client.Views.IMC
                 }
             }
             catch (Exception ex) { Console.WriteLine(ex.Message); }
-        }
-
-        private void UpdatePaginationUI()
-        {
-            if (EmptySessionList != null) EmptySessionList.Visibility = Sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            if (TxtPaginationInfo != null) TxtPaginationInfo.Text = $"Showing {Sessions.Count} sessions";
         }
 
         private void BtnCreateSession_Click(object sender, RoutedEventArgs e)
@@ -192,7 +158,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 liveWindow.Closed += (_, __) =>
                 {
                     this.Show();
-                    FetchPastSessions();
+                    _ = LoadPastSessionsAsync();
                     FetchRoomStatus();
                 };
                 liveWindow.Show();
@@ -209,16 +175,6 @@ namespace AcademicSentinel.Client.Views.IMC
             // 2. Refresh the room status when the list window closes 
             // (in case the teacher added/removed students while in that window)
             FetchRoomStatus();
-        }
-
-        private void BtnSessionHistory_Click(object sender, RoutedEventArgs e)
-        {
-            var sessionHistoryWindow = new SessionHistoryListWindow(CurrentRoomId)
-            {
-                Owner = this
-            };
-
-            sessionHistoryWindow.ShowDialog();
         }
 
         private void SessionAction_Click(object sender, RoutedEventArgs e) => new LiveSessionMonitoringWindow(CurrentRoomId, TxtRoomTitle.Text).Show();
@@ -277,12 +233,21 @@ namespace AcademicSentinel.Client.Views.IMC
                 }
 
                 FetchRoomStatus();
-                FetchPastSessions();
+                await LoadPastSessionsAsync();
                 MessageBox.Show("Room forcefully reset.", "Force End", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to reset room: {ex.Message}", "Force End", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        private void BtnViewArchive_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.Button btn && btn.DataContext is AcademicSentinel.Client.Models.SessionArchiveDto session)
+            {
+                var detailWindow = new SessionArchiveDetailWindow(session.SessionId);
+                detailWindow.Owner = this;
+                detailWindow.ShowDialog();
             }
         }
         private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e) { }
