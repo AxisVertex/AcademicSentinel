@@ -591,40 +591,24 @@ namespace AcademicSentinel.Client.Views.SAC
                     {
                         if (_sessionEnded && isActive)
                             return;
+
+                        if (isActive)
+                        {
+                            _detectorRuntime?.IsPaused = false;
+                            if (FindName("BtnRequestLeave") is Button leaveButton)
+                                leaveButton.IsEnabled = true;
+                        }
                         SetMonitoringActive(isActive);
                     });
                 });
 
                 _hubConnection.On("MonitoringPaused", () =>
                 {
-                    _ = Dispatcher.Invoke(async () =>
+                    _ = Dispatcher.InvokeAsync(() =>
                     {
-                        if (_sessionEnded)
-                            return;
-
-                        _detectorsRunning = false;
                         if (_detectorRuntime != null)
-                        {
                             _detectorRuntime.IsPaused = true;
-                        }
-
-                        TxtMonitoringStatus.Text = "Paused (Awaiting Instructor)";
-                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-
-                        if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
-                        {
-                            compactStatus.Text = "Monitoring: PAUSED";
-                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-                        }
-
-                        if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
-                        {
-                            headerStatus.Text = "Monitoring: PAUSED";
-                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-                        }
-
-                        // Soft lock remains active: do not alter phase/leave-request state.
-                        UpdateHeaderSessionClock();
+                        BtnRequestLeave.IsEnabled = true;
                     });
                 });
 
@@ -685,6 +669,9 @@ namespace AcademicSentinel.Client.Views.SAC
                                     headerResumeStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
                                 }
 
+                                if (FindName("BtnRequestLeave") is Button leaveButton)
+                                    leaveButton.IsEnabled = true;
+
                                 // Soft lock remains active: do not alter phase/leave-request state.
                                 UpdateHeaderSessionClock();
                             });
@@ -699,6 +686,9 @@ namespace AcademicSentinel.Client.Views.SAC
                         int currentStudentId = SessionManager.CurrentUser?.Id ?? 0;
                         if (grantedStudentId != currentStudentId)
                             return;
+
+                        _detectorRuntime?.IsPaused = true;
+                        _detectorRuntime?.Stop();
 
                         if (_detectorRuntime != null)
                         {
@@ -783,10 +773,29 @@ namespace AcademicSentinel.Client.Views.SAC
                     });
                 });
 
+                _hubConnection.On<int>("SessionInterrupted", interruptedRoomId =>
+                {
+                    if (interruptedRoomId != _roomId)
+                        return;
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        _detectorRuntime?.IsPaused = true;
+                        _detectorRuntime?.Stop();
+                        MessageBox.Show("Session interrupted by instructor disconnect. You will be returned to the dashboard.", "Session Interrupted", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        _isLeaveApproved = true;
+                        _ = ForceStopSignalRAsync();
+                        new StudentDashboard().Show();
+                        Close();
+                    });
+                });
+
                 _hubConnection.On("SessionEnded", () =>
                 {
                     Dispatcher.Invoke(() =>
                     {
+                        _detectorRuntime?.IsPaused = true;
+                        _detectorRuntime?.Stop();
                         _sessionEnded = true;
                         _monitoringCountdownEndsAt = null;
                         _monitoringStartedAt = null;
@@ -825,8 +834,12 @@ namespace AcademicSentinel.Client.Views.SAC
                 try
                 {
                     bool isMonitoringActive = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-                    if (_detectorRuntime != null)
-                        _detectorRuntime.IsPaused = !isMonitoringActive;
+                    _ = Dispatcher.InvokeAsync(() =>
+                    {
+                        if (_detectorRuntime != null)
+                            _detectorRuntime.IsPaused = !isMonitoringActive;
+                        BtnRequestLeave.IsEnabled = true;
+                    });
                 }
                 catch
                 {

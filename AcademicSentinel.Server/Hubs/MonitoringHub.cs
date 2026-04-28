@@ -139,14 +139,25 @@ public class MonitoringHub : Hub
                 return;
             }
 
+            var activeSession = await _context.ExamSessions
+                .Where(s => s.RoomId == roomId && s.Status == "Active")
+                .OrderByDescending(s => s.StartTime)
+                .FirstOrDefaultAsync();
+
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
 
             var participant = await _context.SessionParticipants
-                .Where(p => p.RoomId == roomId && p.StudentId == studentId)
+                .Where(p => p.RoomId == roomId && p.StudentId == studentId && (activeSession == null || p.JoinedAt >= activeSession.StartTime))
                 .OrderByDescending(p => p.JoinedAt)
                 .FirstOrDefaultAsync();
 
-            if (participant == null || participant.ConnectionStatus == "Completed")
+            if (participant != null && participant.ConnectionStatus == "Completed")
+            {
+                await Clients.Caller.SendAsync("JoinFailed", "You have already completed and exited this active session.");
+                return;
+            }
+
+            if (participant == null)
             {
                 participant = new SessionParticipant
                 {
