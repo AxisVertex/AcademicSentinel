@@ -57,6 +57,7 @@ namespace AcademicSentinel.Client.Views.SAC
         private bool _allowClose;
         private bool _isPermanentlyDone;
         private bool _isLeaveApproved;
+        private bool _isLeaveRequested;
         private bool _isHandlingFailure = false;
         private readonly Queue<MonitoringEventDto> _pendingViolationQueue = new Queue<MonitoringEventDto>();
         private readonly Dictionary<string, DateTime> _lastViolationSentByType = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
@@ -73,6 +74,10 @@ namespace AcademicSentinel.Client.Views.SAC
         public SecureAssessmentClientWindow(int roomId, string roomTitle)
         {
             InitializeComponent();
+
+            _isLeaveRequested = false;
+            _isLeaveApproved = false;
+            _detectorRuntime?.IsPaused = true;
 
             _roomId = roomId;
             TxtCourseRoom.Text = roomTitle;
@@ -198,6 +203,8 @@ namespace AcademicSentinel.Client.Views.SAC
                     });
                 }
             });
+
+            _detectorRuntime.IsPaused = true;
 
             var enabledModules = new List<string>();
             if (_roomDetectionSettings.EnableFocusDetection) enabledModules.Add("Focus");
@@ -701,6 +708,7 @@ namespace AcademicSentinel.Client.Views.SAC
                         await ForceStopSignalRAsync();
                         StopMonitoringForApprovedLeave();
                         _leaveRequestState = LeaveRequestState.Unlocked;
+                        _isLeaveRequested = false;
                         TxtMonitoringStatus.Text = "Permission Granted - Leave Now";
                         TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(27, 94, 32));
                         if (FindName("TxtCompactLeavePermission") is TextBlock leavePerm)
@@ -813,6 +821,17 @@ namespace AcademicSentinel.Client.Views.SAC
 
                 await _hubConnection.StartAsync();
                 await _hubConnection.InvokeAsync("JoinLiveExam", _roomId);
+
+                try
+                {
+                    bool isMonitoringActive = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
+                    if (_detectorRuntime != null)
+                        _detectorRuntime.IsPaused = !isMonitoringActive;
+                }
+                catch
+                {
+                }
+
                 await FlushPendingViolationsAsync();
 
                 var monitoringState = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
@@ -898,6 +917,9 @@ namespace AcademicSentinel.Client.Views.SAC
                 return;
             }
 
+            if (_isLeaveRequested)
+                return;
+
             switch (_currentPhase)
             {
                 case ExamPhase.PreSession:
@@ -930,14 +952,16 @@ namespace AcademicSentinel.Client.Views.SAC
                             }
 
                             _leaveRequestState = LeaveRequestState.Pending;
+                            _isLeaveRequested = true;
                             UpdateRequestLeaveButtonState();
                             await _hubConnection.InvokeAsync("RequestLeave", _roomId, studentId);
                         }
                         catch (Exception ex)
                         {
+                            _leaveRequestState = LeaveRequestState.Locked;
+                            _isLeaveRequested = false;
                             MessageBox.Show($"Failed to request leave: {ex.Message}", "Request Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
-                            if (_leaveRequestState != LeaveRequestState.Pending)
-                                UpdateRequestLeaveButtonState();
+                            UpdateRequestLeaveButtonState();
                         }
 
                         return;
@@ -1066,13 +1090,13 @@ namespace AcademicSentinel.Client.Views.SAC
         {
             if (_detectorRuntime?.IsPaused == true && !_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
             {
-                TxtMonitoringStatus.Text = "Paused (Awaiting Instructor)";
-                TxtMonitoringStatus.Foreground = Brushes.Orange;
+                TxtMonitoringStatus.Text = "PAUSED (AWAITING INSTRUCTOR)";
+                TxtMonitoringStatus.Foreground = Brushes.Goldenrod;
 
                 if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
                 {
                     compactStatus.Text = "Monitoring: PAUSED";
-                    compactStatus.Foreground = Brushes.Orange;
+                    compactStatus.Foreground = Brushes.Goldenrod;
                 }
             }
             else if (!_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
