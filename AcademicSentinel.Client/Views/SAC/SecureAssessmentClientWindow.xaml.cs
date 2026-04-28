@@ -59,6 +59,7 @@ namespace AcademicSentinel.Client.Views.SAC
         private bool _isLeaveApproved;
         private bool _isLeaveRequested;
         private bool _isHandlingFailure = false;
+        private bool _isTransitioningState = false;
         private readonly Queue<MonitoringEventDto> _pendingViolationQueue = new Queue<MonitoringEventDto>();
         private readonly Dictionary<string, DateTime> _lastViolationSentByType = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
@@ -306,55 +307,6 @@ namespace AcademicSentinel.Client.Views.SAC
         {
             try
             {
-                if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
-                {
-                    var monitoringState = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-
-                    if (_detectorRuntime?.IsPaused == true && monitoringState)
-                    {
-                        UpdateCompactCountdown();
-                        return;
-                    }
-
-                    // Keep COUNTDOWN state stable until countdown ends.
-                    if (_monitoringCountdownEndsAt.HasValue && DateTime.Now < _monitoringCountdownEndsAt.Value && !monitoringState)
-                    {
-                        UpdateCompactCountdown();
-                        return;
-                    }
-
-                    SetMonitoringActive(monitoringState);
-                    return;
-                }
-
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", SessionManager.JwtToken);
-
-                var response = await client.GetAsync($"{ApiEndpoints.Rooms}/{_roomId}");
-                if (!response.IsSuccessStatusCode) return;
-
-                var room = await response.Content.ReadFromJsonAsync<RoomStatusDto>();
-                if (room == null) return;
-
-                // Room status is session state, not monitoring state.
-                // Do not force monitoring back to ACTIVE based on room.Status == Active.
-                var roomIsActive = string.Equals(room.Status, "Active", StringComparison.OrdinalIgnoreCase);
-
-                if (_monitoringCountdownEndsAt.HasValue && DateTime.Now < _monitoringCountdownEndsAt.Value)
-                {
-                    UpdateCompactCountdown();
-                    return;
-                }
-
-                // If room is no longer active, treat as ended/off.
-                if (!roomIsActive)
-                {
-                    _sessionEnded = true;
-                    SetMonitoringActive(false);
-                    return;
-                }
-
-                // Keep current monitoring state if room is active but hub isn't connected.
                 UpdateCompactCountdown();
             }
             catch
@@ -585,96 +537,62 @@ namespace AcademicSentinel.Client.Views.SAC
                     }
                 };
 
-                _hubConnection.On<bool>("MonitoringStateChanged", isActive =>
+                _hubConnection.On<bool>("MonitoringStateChanged", (isActive) =>
                 {
                     Dispatcher.Invoke(() =>
                     {
-                        if (_sessionEnded && isActive)
-                            return;
+                        _detectorRuntime.IsPaused = !isActive;
+                        BtnRequestLeave.IsEnabled = true;
 
                         if (isActive)
                         {
-                            _detectorRuntime?.IsPaused = false;
-                            if (FindName("BtnRequestLeave") is Button leaveButton)
-                                leaveButton.IsEnabled = true;
+                            TxtMonitoringStatus.Text = "ACTIVE";
+                            TxtMonitoringStatus.Foreground = System.Windows.Media.Brushes.LimeGreen;
+                            if (FindName("TxtCompactStatus") is System.Windows.Controls.TextBlock compact) { compact.Text = "ACTIVE"; compact.Foreground = System.Windows.Media.Brushes.LimeGreen; }
                         }
-                        SetMonitoringActive(isActive);
+                        else
+                        {
+                            TxtMonitoringStatus.Text = "PAUSED (AWAITING INSTRUCTOR)";
+                            TxtMonitoringStatus.Foreground = System.Windows.Media.Brushes.Goldenrod;
+                            if (FindName("TxtCompactStatus") is System.Windows.Controls.TextBlock compact) { compact.Text = "PAUSED"; compact.Foreground = System.Windows.Media.Brushes.Goldenrod; }
+                        }
                     });
                 });
 
                 _hubConnection.On("MonitoringPaused", () =>
                 {
-                    _ = Dispatcher.InvokeAsync(() =>
+                    Dispatcher.Invoke(() =>
                     {
-                        if (_detectorRuntime != null)
-                            _detectorRuntime.IsPaused = true;
+                        _detectorRuntime.IsPaused = true;
                         BtnRequestLeave.IsEnabled = true;
+                        TxtMonitoringStatus.Text = "PAUSED BY INSTRUCTOR";
+                        TxtMonitoringStatus.Foreground = System.Windows.Media.Brushes.Goldenrod;
+                        if (FindName("TxtCompactStatus") is System.Windows.Controls.TextBlock compact) { compact.Text = "PAUSED"; compact.Foreground = System.Windows.Media.Brushes.Goldenrod; }
                     });
                 });
 
                 _hubConnection.On("MonitoringResumed", () =>
                 {
-                    _ = Dispatcher.Invoke(async () =>
+                    Task.Run(async () =>
                     {
-                        if (_sessionEnded)
-                            return;
-
-                        _detectorsRunning = true;
-                        TxtMonitoringStatus.Text = "Monitoring resumes in 10 seconds...";
-                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-
-                        if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                        for (int i = 10; i > 0; i--)
                         {
-                            compactStatus.Text = "Monitoring: RESUMING";
-                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-                        }
-
-                        if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
-                        {
-                            headerStatus.Text = "Monitoring: RESUMING";
-                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-                        }
-
-                        _ = Task.Run(async () =>
-                        {
-                            for (int i = 10; i > 0; i--)
+                            Dispatcher.Invoke(() =>
                             {
-                                await Dispatcher.InvokeAsync(() =>
-                                {
-                                    TxtMonitoringStatus.Text = $"Monitoring resumes in {i} seconds...";
-                                });
-
-                                await Task.Delay(TimeSpan.FromSeconds(1));
-                            }
-
-                            await Dispatcher.InvokeAsync(() =>
-                            {
-                                if (_detectorRuntime != null)
-                                {
-                                    _detectorRuntime.IsPaused = false;
-                                }
-
-                                TxtMonitoringStatus.Text = "Monitoring Active - You cannot leave during the session";
-                                TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-
-                                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactResumeStatus)
-                                {
-                                    compactResumeStatus.Text = "Monitoring: ACTIVE";
-                                    compactResumeStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-                                }
-
-                                if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerResumeStatus)
-                                {
-                                    headerResumeStatus.Text = "Monitoring: ACTIVE";
-                                    headerResumeStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-                                }
-
-                                if (FindName("BtnRequestLeave") is Button leaveButton)
-                                    leaveButton.IsEnabled = true;
-
-                                // Soft lock remains active: do not alter phase/leave-request state.
-                                UpdateHeaderSessionClock();
+                                TxtMonitoringStatus.Text = $"RESUMING IN {i}s...";
+                                TxtMonitoringStatus.Foreground = System.Windows.Media.Brushes.Goldenrod;
+                                if (FindName("TxtCompactStatus") is System.Windows.Controls.TextBlock compact) { compact.Text = $"RESUMING IN {i}s..."; compact.Foreground = System.Windows.Media.Brushes.Goldenrod; }
                             });
+                            await Task.Delay(1000);
+                        }
+
+                        Dispatcher.Invoke(() =>
+                        {
+                            _detectorRuntime.IsPaused = false;
+                            BtnRequestLeave.IsEnabled = true;
+                            TxtMonitoringStatus.Text = "ACTIVE";
+                            TxtMonitoringStatus.Foreground = System.Windows.Media.Brushes.LimeGreen;
+                            if (FindName("TxtCompactStatus") is System.Windows.Controls.TextBlock compact) { compact.Text = "ACTIVE"; compact.Foreground = System.Windows.Media.Brushes.LimeGreen; }
                         });
                     });
                 });
@@ -719,40 +637,20 @@ namespace AcademicSentinel.Client.Views.SAC
                     });
                 });
 
-                _hubConnection.On<int, int>("MonitoringCountdownStarted", (delaySeconds, monitoringDurationSeconds) =>
+                _hubConnection.On<int, int>("MonitoringCountdownStarted", (delay, duration) =>
                 {
-                    Dispatcher.Invoke(() =>
+                    Task.Run(async () =>
                     {
-                        _currentPhase = ExamPhase.Countdown;
-                        _leaveRequestState = LeaveRequestState.Locked;
-                        _monitoringCountdownEndsAt = DateTime.Now.AddSeconds(Math.Max(0, delaySeconds));
-                        _timerEnabled = monitoringDurationSeconds > 0;
-                        _currentMonitoringDuration = _timerEnabled ? TimeSpan.FromSeconds(monitoringDurationSeconds) : TimeSpan.Zero;
-                        _sessionEnded = false;
-
-                        _isMonitoringActive = true; // lock leave during countdown
-                        TxtMonitoringStatus.Text = $"Monitoring starts in {delaySeconds}s - Leave disabled";
-                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-
-                        if (FindName("TxtCompactMonitoringStatus") is System.Windows.Controls.TextBlock compactStatus)
+                        for (int i = delay; i > 0; i--)
                         {
-                            compactStatus.Text = "Monitoring: COUNTDOWN";
-                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                            Dispatcher.Invoke(() =>
+                            {
+                                TxtMonitoringStatus.Text = $"STARTING IN {i}s...";
+                                TxtMonitoringStatus.Foreground = System.Windows.Media.Brushes.Goldenrod;
+                                if (FindName("TxtCompactStatus") is System.Windows.Controls.TextBlock compact) { compact.Text = $"STARTING IN {i}s..."; compact.Foreground = System.Windows.Media.Brushes.Goldenrod; }
+                            });
+                            await Task.Delay(1000);
                         }
-                        if (FindName("TxtHeaderMonitoringStatus") is System.Windows.Controls.TextBlock headerStatus)
-                        {
-                            headerStatus.Text = "Monitoring: COUNTDOWN";
-                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-                        }
-
-                        if (FindName("TxtCompactLeavePermission") is System.Windows.Controls.TextBlock leavePerm)
-                        {
-                            leavePerm.Text = "Leave Permission: Blocked";
-                            leavePerm.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-                        }
-                        UpdateDetectorRuntimeState();
-                        UpdateCompactCountdown();
-                        UpdateRequestLeaveButtonState();
                     });
                 });
 
@@ -834,11 +732,21 @@ namespace AcademicSentinel.Client.Views.SAC
                 try
                 {
                     bool isMonitoringActive = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-                    _ = Dispatcher.InvokeAsync(() =>
+                    Dispatcher.Invoke(() =>
                     {
-                        if (_detectorRuntime != null)
-                            _detectorRuntime.IsPaused = !isMonitoringActive;
+                        _detectorRuntime.IsPaused = !isMonitoringActive;
                         BtnRequestLeave.IsEnabled = true;
+
+                        if (isMonitoringActive)
+                        {
+                            TxtMonitoringStatus.Text = "ACTIVE"; TxtMonitoringStatus.Foreground = System.Windows.Media.Brushes.LimeGreen;
+                            if (FindName("TxtCompactStatus") is System.Windows.Controls.TextBlock compact) { compact.Text = "ACTIVE"; compact.Foreground = System.Windows.Media.Brushes.LimeGreen; }
+                        }
+                        else
+                        {
+                            TxtMonitoringStatus.Text = "PAUSED (AWAITING INSTRUCTOR)"; TxtMonitoringStatus.Foreground = System.Windows.Media.Brushes.Goldenrod;
+                            if (FindName("TxtCompactStatus") is System.Windows.Controls.TextBlock compact) { compact.Text = "PAUSED"; compact.Foreground = System.Windows.Media.Brushes.Goldenrod; }
+                        }
                     });
                 }
                 catch
@@ -846,9 +754,6 @@ namespace AcademicSentinel.Client.Views.SAC
                 }
 
                 await FlushPendingViolationsAsync();
-
-                var monitoringState = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-                SetMonitoringActive(monitoringState);
             }
             catch (Exception ex)
             {
@@ -1103,24 +1008,30 @@ namespace AcademicSentinel.Client.Views.SAC
         {
             if (_detectorRuntime?.IsPaused == true && !_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
             {
-                TxtMonitoringStatus.Text = "PAUSED (AWAITING INSTRUCTOR)";
-                TxtMonitoringStatus.Foreground = Brushes.Goldenrod;
-
-                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                if (!_isTransitioningState)
                 {
-                    compactStatus.Text = "Monitoring: PAUSED";
-                    compactStatus.Foreground = Brushes.Goldenrod;
+                    TxtMonitoringStatus.Text = "PAUSED (AWAITING INSTRUCTOR)";
+                    TxtMonitoringStatus.Foreground = Brushes.Goldenrod;
+
+                    if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                    {
+                        compactStatus.Text = "Monitoring: PAUSED";
+                        compactStatus.Foreground = Brushes.Goldenrod;
+                    }
                 }
             }
             else if (!_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
             {
-                TxtMonitoringStatus.Text = "ACTIVE";
-                TxtMonitoringStatus.Foreground = Brushes.LimeGreen;
-
-                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                if (!_isTransitioningState)
                 {
-                    compactStatus.Text = "Monitoring: ACTIVE";
-                    compactStatus.Foreground = Brushes.LimeGreen;
+                    TxtMonitoringStatus.Text = "ACTIVE";
+                    TxtMonitoringStatus.Foreground = Brushes.LimeGreen;
+
+                    if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                    {
+                        compactStatus.Text = "Monitoring: ACTIVE";
+                        compactStatus.Foreground = Brushes.LimeGreen;
+                    }
                 }
             }
 
