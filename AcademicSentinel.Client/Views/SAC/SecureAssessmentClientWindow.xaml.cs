@@ -567,15 +567,45 @@ namespace AcademicSentinel.Client.Views.SAC
                 _hubConnection.On<bool>("MonitoringStateChanged", (isActive) =>
                 {
                     _stateCts?.Cancel();
-                    string text = isActive ? "ACTIVE" : "PAUSED (AWAITING INSTRUCTOR)";
-                    var color = isActive ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Goldenrod;
+                    if (isActive)
+                    {
+                        _isMonitoringActive = true;
+                        _monitoringCountdownEndsAt = null;
+                        _monitoringStartedAt ??= DateTime.Now;
+                        _currentPhase = ExamPhase.Active;
+                    }
+                    else
+                    {
+                        _isMonitoringActive = false;
+                        _monitoringCountdownEndsAt = null;
+                        _monitoringStartedAt = null;
+                        if (!_sessionEnded)
+                            _currentPhase = ExamPhase.PreSession;
+                        _leaveRequestState = LeaveRequestState.Locked;
+                        _isLeaveRequested = false;
+                    }
+
+                    string text = isActive ? "ACTIVE" : "INACTIVE";
+                    var color = isActive ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Gray;
                     SetMonitoringStateUI(isActive, text, color);
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
                 });
 
                 _hubConnection.On("MonitoringPaused", () =>
                 {
                     _stateCts?.Cancel();
+                    _isMonitoringActive = false;
+                    _monitoringCountdownEndsAt = null;
+                    _monitoringStartedAt = null;
+                    if (!_sessionEnded)
+                        _currentPhase = ExamPhase.Active;
+                    _leaveRequestState = LeaveRequestState.Locked;
+                    _isLeaveRequested = false;
+
                     SetMonitoringStateUI(false, "PAUSED BY INSTRUCTOR", System.Windows.Media.Brushes.Goldenrod);
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
                 });
 
                 _hubConnection.On("MonitoringResumed", () =>
@@ -584,17 +614,45 @@ namespace AcademicSentinel.Client.Views.SAC
                     _stateCts = new System.Threading.CancellationTokenSource();
                     var token = _stateCts.Token;
 
+                    _isMonitoringActive = false;
+                    _monitoringCountdownEndsAt = DateTime.Now.AddSeconds(10);
+                    _currentPhase = ExamPhase.Countdown;
+                    _leaveRequestState = LeaveRequestState.Locked;
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
+
                     Task.Run(async () =>
                     {
-                        for (int i = 10; i > 0; i--)
+                        try
                         {
-                            if (token.IsCancellationRequested) return;
-                            SetMonitoringStateUI(false, $"RESUMING IN {i}s...", System.Windows.Media.Brushes.Goldenrod);
-                            await Task.Delay(1000, token);
-                        }
+                            var endTime = DateTime.UtcNow.AddSeconds(10);
+                            while (true)
+                            {
+                                if (token.IsCancellationRequested)
+                                    return;
 
-                        if (!token.IsCancellationRequested)
-                            SetMonitoringStateUI(true, "ACTIVE", System.Windows.Media.Brushes.LimeGreen);
+                                var remaining = (int)Math.Ceiling((endTime - DateTime.UtcNow).TotalSeconds);
+                                if (remaining <= 0)
+                                    break;
+
+                                SetMonitoringStateUI(false, $"RESUMING IN {remaining}s...", System.Windows.Media.Brushes.Goldenrod);
+                                await Task.Delay(250, token);
+                            }
+
+                            if (!token.IsCancellationRequested)
+                            {
+                                _isMonitoringActive = true;
+                                _monitoringCountdownEndsAt = null;
+                                _monitoringStartedAt ??= DateTime.Now;
+                                _currentPhase = ExamPhase.Active;
+                                SetMonitoringStateUI(true, "ACTIVE", System.Windows.Media.Brushes.LimeGreen);
+                                UpdateDetectorRuntimeState();
+                                UpdateRequestLeaveButtonState();
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                        }
                     }, token);
                 });
 
@@ -644,13 +702,44 @@ namespace AcademicSentinel.Client.Views.SAC
                     _stateCts = new System.Threading.CancellationTokenSource();
                     var token = _stateCts.Token;
 
+                    _isMonitoringActive = false;
+                    _monitoringCountdownEndsAt = DateTime.Now.AddSeconds(Math.Max(0, delay));
+                    _currentPhase = ExamPhase.Countdown;
+                    _leaveRequestState = LeaveRequestState.Locked;
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
+
                     Task.Run(async () =>
                     {
-                        for (int i = delay; i > 0; i--)
+                        try
                         {
-                            if (token.IsCancellationRequested) return;
-                            SetMonitoringStateUI(false, $"STARTING IN {i}s...", System.Windows.Media.Brushes.Goldenrod);
-                            await Task.Delay(1000, token);
+                            var endTime = DateTime.UtcNow.AddSeconds(Math.Max(0, delay));
+                            while (true)
+                            {
+                                if (token.IsCancellationRequested)
+                                    return;
+
+                                var remaining = (int)Math.Ceiling((endTime - DateTime.UtcNow).TotalSeconds);
+                                if (remaining <= 0)
+                                    break;
+
+                                SetMonitoringStateUI(false, $"STARTING IN {remaining}s...", System.Windows.Media.Brushes.Goldenrod);
+                                await Task.Delay(250, token);
+                            }
+
+                            if (!token.IsCancellationRequested)
+                            {
+                                _isMonitoringActive = true;
+                                _monitoringCountdownEndsAt = null;
+                                _monitoringStartedAt ??= DateTime.Now;
+                                _currentPhase = ExamPhase.Active;
+                                SetMonitoringStateUI(true, "ACTIVE", System.Windows.Media.Brushes.LimeGreen);
+                                UpdateDetectorRuntimeState();
+                                UpdateRequestLeaveButtonState();
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
                         }
                     }, token);
                 });
@@ -733,9 +822,17 @@ namespace AcademicSentinel.Client.Views.SAC
                 try
                 {
                     bool isMonitoringActive = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-                    string text = isMonitoringActive ? "ACTIVE" : "PAUSED (AWAITING INSTRUCTOR)";
-                    var color = isMonitoringActive ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Goldenrod;
+                    _isMonitoringActive = isMonitoringActive;
+                    _monitoringCountdownEndsAt = null;
+                    _monitoringStartedAt = isMonitoringActive ? DateTime.Now : null;
+                    if (!_sessionEnded)
+                        _currentPhase = isMonitoringActive ? ExamPhase.Active : ExamPhase.PreSession;
+
+                    string text = isMonitoringActive ? "ACTIVE" : "INACTIVE";
+                    var color = isMonitoringActive ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Gray;
                     SetMonitoringStateUI(isMonitoringActive, text, color);
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
                 }
                 catch
                 {
