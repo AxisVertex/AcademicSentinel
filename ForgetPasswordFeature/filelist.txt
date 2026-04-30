@@ -1,0 +1,22 @@
+List of files to include in the zip for the Forget Password feature:
+
+Client:
+- AcademicSentinel.Client/Views/Shared/LoginWindow.xaml
+- AcademicSentinel.Client/Views/Shared/LoginWindow.xaml.cs
+- AcademicSentinel.Client/Views/Shared/ForgetPasswordWindow.xaml
+- AcademicSentinel.Client/Views/Shared/ForgetPasswordWindow.xaml.cs
+- AcademicSentinel.Client/Views/Shared/ForgetPasswordWindowCodeVerification.xaml
+- AcademicSentinel.Client/Views/Shared/ForgetPasswordWindowCodeVerification.xaml.cs
+- AcademicSentinel.Client/Views/Shared/ForgetPasswordWindowChangePass.xaml
+- AcademicSentinel.Client/Views/Shared/ForgetPasswordWindowChangePass.xaml.cs
+- AcademicSentinel.Client/Services/AuthService.cs
+- AcademicSentinel.Client/Constants/ApiEndpoints.cs
+- AcademicSentinel.Client/Models/AuthDTOs.cs
+
+Server:
+- AcademicSentinel.Server/Controllers/AuthController.cs
+- AcademicSentinel.Server/DTOs/AuthDTOs.cs
+- AcademicSentinel.Server/Models/User.cs
+- AcademicSentinel.Server/Services/IEmailSender.cs
+- AcademicSentinel.Server/Services/OutlookEmailSender.cs
+- AcademicSentinel.Server/appsettings.json

@@ -45,7 +45,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-//builder.Services.AddSwaggerGen();
 
 // --- SWAGGER JWT SETUP ---
 builder.Services.AddSwaggerGen(c =>
@@ -80,6 +79,9 @@ builder.Services.AddSignalR();
 
 // Image Storage Service
 builder.Services.AddScoped<IImageStorageService, ImageStorageService>();
+
+// --- ADDED THIS LINE: Email Service Registration ---
+builder.Services.AddTransient<IEmailSender, OutlookEmailSender>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));

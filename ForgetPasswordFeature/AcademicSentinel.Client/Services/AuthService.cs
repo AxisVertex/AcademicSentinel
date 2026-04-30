@@ -10,12 +10,10 @@ namespace AcademicSentinel.Client.Services
     public class AuthService
     {
         private readonly HttpClient _httpClient;
-        public string? LastErrorMessage { get; set; }
 
         public AuthService()
         {
             _httpClient = new HttpClient();
-            _httpClient.Timeout = TimeSpan.FromSeconds(30);
         }
 
         // Calls POST /api/auth/register
@@ -67,32 +65,10 @@ namespace AcademicSentinel.Client.Services
             {
                 var request = new ForgotPasswordRequestDto { Email = email };
                 var response = await _httpClient.PostAsJsonAsync(ApiEndpoints.AuthForgotPassword, request);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    try
-                    {
-                        var errorContent = await response.Content.ReadAsStringAsync();
-                        LastErrorMessage = $"Server error ({response.StatusCode}): {errorContent}";
-                    }
-                    catch
-                    {
-                        LastErrorMessage = $"Server returned error: {response.StatusCode}";
-                    }
-                    return false;
-                }
-
-                LastErrorMessage = null;
-                return true;
+                return response.IsSuccessStatusCode;
             }
-            catch (HttpRequestException hre)
+            catch
             {
-                LastErrorMessage = $"Network error: {hre.Message}. Check if the server is running.";
-                return false;
-            }
-            catch (Exception ex)
-            {
-                LastErrorMessage = $"Unexpected error: {ex.Message}";
                 return false;
             }
         }
