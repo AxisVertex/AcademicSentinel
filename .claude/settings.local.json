@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet restore *)",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/npgsql.entityframeworkcore.postgresql/index.json\")",
+      "Bash(rm -f Migrations/20260413085535_InitialCreate.cs Migrations/20260413085535_InitialCreate.Designer.cs Migrations/20260429133041_AddPasswordResetFields.cs Migrations/20260429133041_AddPasswordResetFields.Designer.cs Migrations/AppDbContextModelSnapshot.cs)",
+      "Bash(rm -f academicsentinel.db)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet ef *)",
+      "Bash(dotnet tool *)",
+      "Bash(export PATH=\"$PATH:$HOME/.dotnet/tools\")",
+      "Bash(tasklist //FI \"PID eq 15588\")"
+    ]
+  }
+}
