@@ -9,7 +9,8 @@
       "Bash(dotnet ef *)",
       "Bash(dotnet tool *)",
       "Bash(export PATH=\"$PATH:$HOME/.dotnet/tools\")",
-      "Bash(tasklist //FI \"PID eq 15588\")"
+      "Bash(tasklist //FI \"PID eq 15588\")",
+      "Bash(dotnet user-secrets *)"
     ]
   }
 }
