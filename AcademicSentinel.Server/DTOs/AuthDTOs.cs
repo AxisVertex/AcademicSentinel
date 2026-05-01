@@ -21,19 +21,30 @@ public class UserResponseDto
 {
     public int Id { get; set; }
     public string Email { get; set; } = string.Empty;
-    public string FullName { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
-    public string Token { get; set; } = string.Empty; 
+    public string Token { get; set; } = string.Empty;
 }
 
-public class UpdateProfileDto
+public class ForgotPasswordRequestDto
 {
-    public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
 }
 
-public class ChangePasswordDto
+public class VerifyResetCodeRequestDto
 {
-    public string CurrentPassword { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Code { get; set; } = string.Empty;
+}
+
+public class VerifyResetCodeResponseDto
+{
+    public bool Success { get; set; }
+    public string ResetToken { get; set; } = string.Empty;
+}
+
+public class ResetPasswordRequestDto
+{
+    public string Email { get; set; } = string.Empty;
     public string NewPassword { get; set; } = string.Empty;
+    public string ResetToken { get; set; } = string.Empty;
 }

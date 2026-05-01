@@ -316,12 +316,15 @@
                                  Margin="0,0,0,10"/>
 
                     <!-- Forgot Password Link -->
-                    <TextBlock HorizontalAlignment="Right"
-                               Margin="0,0,0,28">
-                        <Run Text="Forgot Password?"
-                             Foreground="#9E9E9E"
-                             FontSize="12"
-                             Cursor="Hand"/>
+                    <TextBlock x:Name="LinkForgotPassword"
+                               HorizontalAlignment="Right"
+                               Margin="0,0,0,28"
+                               Foreground="#1B5E20"
+                               FontSize="12"
+                               FontWeight="Bold"
+                               Cursor="Hand"
+                               MouseLeftButtonDown="LinkForgotPassword_Click">
+                        <Run Text="Forgot Password?"/>
                     </TextBlock>
 
                     <!-- Login Button -->

@@ -4,7 +4,6 @@
     {
         // ========================================================
         // MAIN SERVER URL
-        // Make sure this port matches your AcademicSentinel.Server
         // ========================================================
         public const string BaseUrl = "https://localhost:7123";
 
@@ -16,7 +15,16 @@
         public const string AuthProfile = $"{BaseUrl}/api/auth/profile";
         public const string AuthChangePassword = $"{BaseUrl}/api/auth/change-password";
 
-        // We will add the Room, Image, and Report endpoints here later!
+        // ========================================================
+        // PASSWORD RESET
+        // ========================================================
+        public const string AuthForgotPassword = $"{BaseUrl}/api/auth/forgot-password";
+        public const string AuthVerifyResetCode = $"{BaseUrl}/api/auth/verify-reset-code";
+        public const string AuthResetPassword = $"{BaseUrl}/api/auth/reset-password";
+
+        // ========================================================
+        // OTHER
+        // ========================================================
         public const string Rooms = $"{BaseUrl}/api/rooms";
     }
 }

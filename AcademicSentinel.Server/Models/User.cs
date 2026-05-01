@@ -16,4 +16,10 @@ public class User
     public string? ProfileImageContentType { get; set; } // MIME type (image/png, image/jpeg, etc.)
     public long? ProfileImageSize { get; set; } // File size in bytes
     public DateTime? ProfileImageUploadedAt { get; set; } // When the image was uploaded
+
+    // Forgot-password flow fields
+    public string? PasswordResetCodeHash { get; set; }
+    public DateTime? PasswordResetCodeExpiresAt { get; set; }
+    public string? PasswordResetToken { get; set; }
+    public DateTime? PasswordResetTokenExpiresAt { get; set; }
 }

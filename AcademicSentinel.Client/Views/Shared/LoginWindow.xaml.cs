@@ -86,6 +86,12 @@ namespace AcademicSentinel.Client.Views.Shared
             this.Close();
         }
 
+        private void LinkForgotPassword_Click(object sender, MouseButtonEventArgs e)
+        {
+            new ForgetPasswordWindow().Show();
+            this.Close();
+        }
+
         private void RoleToggle_Changed(object sender, RoutedEventArgs e) { }
     }
 }
