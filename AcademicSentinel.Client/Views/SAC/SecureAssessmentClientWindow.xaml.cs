@@ -59,6 +59,8 @@ namespace AcademicSentinel.Client.Views.SAC
         private bool _isLeaveApproved;
         private bool _isLeaveRequested;
         private bool _isHandlingFailure = false;
+        private bool _isTransitioningState = false;
+        private System.Threading.CancellationTokenSource _stateCts;
         private readonly Queue<MonitoringEventDto> _pendingViolationQueue = new Queue<MonitoringEventDto>();
         private readonly Dictionary<string, DateTime> _lastViolationSentByType = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
@@ -302,59 +304,36 @@ namespace AcademicSentinel.Client.Views.SAC
             UpdateRequestLeaveButtonState();
         }
 
+        private void SetMonitoringStateUI(bool isActive, string statusText, System.Windows.Media.Brush color)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (_detectorRuntime != null)
+                    _detectorRuntime.IsPaused = !isActive;
+
+                // Always unlock the leave button so students are never trapped
+                BtnRequestLeave.IsEnabled = true;
+
+                // Update Main View
+                if (TxtMonitoringStatus != null)
+                {
+                    TxtMonitoringStatus.Text = statusText;
+                    TxtMonitoringStatus.Foreground = color;
+                }
+
+                // Update Compact View
+                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                {
+                    compactStatus.Text = statusText;
+                    compactStatus.Foreground = color;
+                }
+            });
+        }
+
         private async Task RefreshMonitoringStateAsync()
         {
             try
             {
-                if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
-                {
-                    var monitoringState = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-
-                    if (_detectorRuntime?.IsPaused == true && monitoringState)
-                    {
-                        UpdateCompactCountdown();
-                        return;
-                    }
-
-                    // Keep COUNTDOWN state stable until countdown ends.
-                    if (_monitoringCountdownEndsAt.HasValue && DateTime.Now < _monitoringCountdownEndsAt.Value && !monitoringState)
-                    {
-                        UpdateCompactCountdown();
-                        return;
-                    }
-
-                    SetMonitoringActive(monitoringState);
-                    return;
-                }
-
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", SessionManager.JwtToken);
-
-                var response = await client.GetAsync($"{ApiEndpoints.Rooms}/{_roomId}");
-                if (!response.IsSuccessStatusCode) return;
-
-                var room = await response.Content.ReadFromJsonAsync<RoomStatusDto>();
-                if (room == null) return;
-
-                // Room status is session state, not monitoring state.
-                // Do not force monitoring back to ACTIVE based on room.Status == Active.
-                var roomIsActive = string.Equals(room.Status, "Active", StringComparison.OrdinalIgnoreCase);
-
-                if (_monitoringCountdownEndsAt.HasValue && DateTime.Now < _monitoringCountdownEndsAt.Value)
-                {
-                    UpdateCompactCountdown();
-                    return;
-                }
-
-                // If room is no longer active, treat as ended/off.
-                if (!roomIsActive)
-                {
-                    _sessionEnded = true;
-                    SetMonitoringActive(false);
-                    return;
-                }
-
-                // Keep current monitoring state if room is active but hub isn't connected.
                 UpdateCompactCountdown();
             }
             catch
@@ -585,111 +564,96 @@ namespace AcademicSentinel.Client.Views.SAC
                     }
                 };
 
-                _hubConnection.On<bool>("MonitoringStateChanged", isActive =>
+                _hubConnection.On<bool>("MonitoringStateChanged", (isActive) =>
                 {
-                    Dispatcher.Invoke(() =>
+                    _stateCts?.Cancel();
+                    if (isActive)
                     {
-                        if (_sessionEnded && isActive)
-                            return;
-                        SetMonitoringActive(isActive);
-                    });
+                        _isMonitoringActive = true;
+                        _monitoringCountdownEndsAt = null;
+                        _monitoringStartedAt ??= DateTime.Now;
+                        _currentPhase = ExamPhase.Active;
+                    }
+                    else
+                    {
+                        _isMonitoringActive = false;
+                        _monitoringCountdownEndsAt = null;
+                        _monitoringStartedAt = null;
+                        if (!_sessionEnded)
+                            _currentPhase = ExamPhase.PreSession;
+                        _leaveRequestState = LeaveRequestState.Locked;
+                        _isLeaveRequested = false;
+                    }
+
+                    string text = isActive ? "ACTIVE" : "INACTIVE";
+                    var color = isActive ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Gray;
+                    SetMonitoringStateUI(isActive, text, color);
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
                 });
 
                 _hubConnection.On("MonitoringPaused", () =>
                 {
-                    _ = Dispatcher.Invoke(async () =>
-                    {
-                        if (_sessionEnded)
-                            return;
+                    _stateCts?.Cancel();
+                    _isMonitoringActive = false;
+                    _monitoringCountdownEndsAt = null;
+                    _monitoringStartedAt = null;
+                    if (!_sessionEnded)
+                        _currentPhase = ExamPhase.Active;
+                    _leaveRequestState = LeaveRequestState.Locked;
+                    _isLeaveRequested = false;
 
-                        _detectorsRunning = false;
-                        if (_detectorRuntime != null)
-                        {
-                            _detectorRuntime.IsPaused = true;
-                        }
-
-                        TxtMonitoringStatus.Text = "Paused (Awaiting Instructor)";
-                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-
-                        if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
-                        {
-                            compactStatus.Text = "Monitoring: PAUSED";
-                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-                        }
-
-                        if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
-                        {
-                            headerStatus.Text = "Monitoring: PAUSED";
-                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-                        }
-
-                        // Soft lock remains active: do not alter phase/leave-request state.
-                        UpdateHeaderSessionClock();
-                    });
+                    SetMonitoringStateUI(false, "PAUSED BY INSTRUCTOR", System.Windows.Media.Brushes.Goldenrod);
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
                 });
 
                 _hubConnection.On("MonitoringResumed", () =>
                 {
-                    _ = Dispatcher.Invoke(async () =>
+                    _stateCts?.Cancel();
+                    _stateCts = new System.Threading.CancellationTokenSource();
+                    var token = _stateCts.Token;
+
+                    _isMonitoringActive = false;
+                    _monitoringCountdownEndsAt = DateTime.Now.AddSeconds(10);
+                    _currentPhase = ExamPhase.Countdown;
+                    _leaveRequestState = LeaveRequestState.Locked;
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
+
+                    Task.Run(async () =>
                     {
-                        if (_sessionEnded)
-                            return;
-
-                        _detectorsRunning = true;
-                        TxtMonitoringStatus.Text = "Monitoring resumes in 10 seconds...";
-                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-
-                        if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
+                        try
                         {
-                            compactStatus.Text = "Monitoring: RESUMING";
-                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-                        }
-
-                        if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
-                        {
-                            headerStatus.Text = "Monitoring: RESUMING";
-                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34));
-                        }
-
-                        _ = Task.Run(async () =>
-                        {
-                            for (int i = 10; i > 0; i--)
+                            var endTime = DateTime.UtcNow.AddSeconds(10);
+                            while (true)
                             {
-                                await Dispatcher.InvokeAsync(() =>
-                                {
-                                    TxtMonitoringStatus.Text = $"Monitoring resumes in {i} seconds...";
-                                });
+                                if (token.IsCancellationRequested)
+                                    return;
 
-                                await Task.Delay(TimeSpan.FromSeconds(1));
+                                var remaining = (int)Math.Ceiling((endTime - DateTime.UtcNow).TotalSeconds);
+                                if (remaining <= 0)
+                                    break;
+
+                                SetMonitoringStateUI(false, $"RESUMING IN {remaining}s...", System.Windows.Media.Brushes.Goldenrod);
+                                await Task.Delay(250, token);
                             }
 
-                            await Dispatcher.InvokeAsync(() =>
+                            if (!token.IsCancellationRequested)
                             {
-                                if (_detectorRuntime != null)
-                                {
-                                    _detectorRuntime.IsPaused = false;
-                                }
-
-                                TxtMonitoringStatus.Text = "Monitoring Active - You cannot leave during the session";
-                                TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-
-                                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactResumeStatus)
-                                {
-                                    compactResumeStatus.Text = "Monitoring: ACTIVE";
-                                    compactResumeStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-                                }
-
-                                if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerResumeStatus)
-                                {
-                                    headerResumeStatus.Text = "Monitoring: ACTIVE";
-                                    headerResumeStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-                                }
-
-                                // Soft lock remains active: do not alter phase/leave-request state.
-                                UpdateHeaderSessionClock();
-                            });
-                        });
-                    });
+                                _isMonitoringActive = true;
+                                _monitoringCountdownEndsAt = null;
+                                _monitoringStartedAt ??= DateTime.Now;
+                                _currentPhase = ExamPhase.Active;
+                                SetMonitoringStateUI(true, "ACTIVE", System.Windows.Media.Brushes.LimeGreen);
+                                UpdateDetectorRuntimeState();
+                                UpdateRequestLeaveButtonState();
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                        }
+                    }, token);
                 });
 
                 _hubConnection.On<int>("LeaveGranted", grantedStudentId =>
@@ -699,6 +663,9 @@ namespace AcademicSentinel.Client.Views.SAC
                         int currentStudentId = SessionManager.CurrentUser?.Id ?? 0;
                         if (grantedStudentId != currentStudentId)
                             return;
+
+                        _detectorRuntime?.IsPaused = true;
+                        _detectorRuntime?.Stop();
 
                         if (_detectorRuntime != null)
                         {
@@ -729,41 +696,52 @@ namespace AcademicSentinel.Client.Views.SAC
                     });
                 });
 
-                _hubConnection.On<int, int>("MonitoringCountdownStarted", (delaySeconds, monitoringDurationSeconds) =>
+                _hubConnection.On<int, int>("MonitoringCountdownStarted", (delay, duration) =>
                 {
-                    Dispatcher.Invoke(() =>
+                    _stateCts?.Cancel();
+                    _stateCts = new System.Threading.CancellationTokenSource();
+                    var token = _stateCts.Token;
+
+                    _isMonitoringActive = false;
+                    _monitoringCountdownEndsAt = DateTime.Now.AddSeconds(Math.Max(0, delay));
+                    _currentPhase = ExamPhase.Countdown;
+                    _leaveRequestState = LeaveRequestState.Locked;
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
+
+                    Task.Run(async () =>
                     {
-                        _currentPhase = ExamPhase.Countdown;
-                        _leaveRequestState = LeaveRequestState.Locked;
-                        _monitoringCountdownEndsAt = DateTime.Now.AddSeconds(Math.Max(0, delaySeconds));
-                        _timerEnabled = monitoringDurationSeconds > 0;
-                        _currentMonitoringDuration = _timerEnabled ? TimeSpan.FromSeconds(monitoringDurationSeconds) : TimeSpan.Zero;
-                        _sessionEnded = false;
-
-                        _isMonitoringActive = true; // lock leave during countdown
-                        TxtMonitoringStatus.Text = $"Monitoring starts in {delaySeconds}s - Leave disabled";
-                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-
-                        if (FindName("TxtCompactMonitoringStatus") is System.Windows.Controls.TextBlock compactStatus)
+                        try
                         {
-                            compactStatus.Text = "Monitoring: COUNTDOWN";
-                            compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-                        }
-                        if (FindName("TxtHeaderMonitoringStatus") is System.Windows.Controls.TextBlock headerStatus)
-                        {
-                            headerStatus.Text = "Monitoring: COUNTDOWN";
-                            headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
-                        }
+                            var endTime = DateTime.UtcNow.AddSeconds(Math.Max(0, delay));
+                            while (true)
+                            {
+                                if (token.IsCancellationRequested)
+                                    return;
 
-                        if (FindName("TxtCompactLeavePermission") is System.Windows.Controls.TextBlock leavePerm)
-                        {
-                            leavePerm.Text = "Leave Permission: Blocked";
-                            leavePerm.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                                var remaining = (int)Math.Ceiling((endTime - DateTime.UtcNow).TotalSeconds);
+                                if (remaining <= 0)
+                                    break;
+
+                                SetMonitoringStateUI(false, $"STARTING IN {remaining}s...", System.Windows.Media.Brushes.Goldenrod);
+                                await Task.Delay(250, token);
+                            }
+
+                            if (!token.IsCancellationRequested)
+                            {
+                                _isMonitoringActive = true;
+                                _monitoringCountdownEndsAt = null;
+                                _monitoringStartedAt ??= DateTime.Now;
+                                _currentPhase = ExamPhase.Active;
+                                SetMonitoringStateUI(true, "ACTIVE", System.Windows.Media.Brushes.LimeGreen);
+                                UpdateDetectorRuntimeState();
+                                UpdateRequestLeaveButtonState();
+                            }
                         }
-                        UpdateDetectorRuntimeState();
-                        UpdateCompactCountdown();
-                        UpdateRequestLeaveButtonState();
-                    });
+                        catch (OperationCanceledException)
+                        {
+                        }
+                    }, token);
                 });
 
                 _hubConnection.On<string>("JoinFailed", message =>
@@ -783,10 +761,29 @@ namespace AcademicSentinel.Client.Views.SAC
                     });
                 });
 
+                _hubConnection.On<int>("SessionInterrupted", interruptedRoomId =>
+                {
+                    if (interruptedRoomId != _roomId)
+                        return;
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        _detectorRuntime?.IsPaused = true;
+                        _detectorRuntime?.Stop();
+                        MessageBox.Show("Session interrupted by instructor disconnect. You will be returned to the dashboard.", "Session Interrupted", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        _isLeaveApproved = true;
+                        _ = ForceStopSignalRAsync();
+                        new StudentDashboard().Show();
+                        Close();
+                    });
+                });
+
                 _hubConnection.On("SessionEnded", () =>
                 {
                     Dispatcher.Invoke(() =>
                     {
+                        _detectorRuntime?.IsPaused = true;
+                        _detectorRuntime?.Stop();
                         _sessionEnded = true;
                         _monitoringCountdownEndsAt = null;
                         _monitoringStartedAt = null;
@@ -825,17 +822,23 @@ namespace AcademicSentinel.Client.Views.SAC
                 try
                 {
                     bool isMonitoringActive = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-                    if (_detectorRuntime != null)
-                        _detectorRuntime.IsPaused = !isMonitoringActive;
+                    _isMonitoringActive = isMonitoringActive;
+                    _monitoringCountdownEndsAt = null;
+                    _monitoringStartedAt = isMonitoringActive ? DateTime.Now : null;
+                    if (!_sessionEnded)
+                        _currentPhase = isMonitoringActive ? ExamPhase.Active : ExamPhase.PreSession;
+
+                    string text = isMonitoringActive ? "ACTIVE" : "INACTIVE";
+                    var color = isMonitoringActive ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Gray;
+                    SetMonitoringStateUI(isMonitoringActive, text, color);
+                    UpdateDetectorRuntimeState();
+                    UpdateRequestLeaveButtonState();
                 }
                 catch
                 {
                 }
 
                 await FlushPendingViolationsAsync();
-
-                var monitoringState = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
-                SetMonitoringActive(monitoringState);
             }
             catch (Exception ex)
             {
@@ -1088,29 +1091,6 @@ namespace AcademicSentinel.Client.Views.SAC
 
         private void UpdateCompactCountdown()
         {
-            if (_detectorRuntime?.IsPaused == true && !_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
-            {
-                TxtMonitoringStatus.Text = "PAUSED (AWAITING INSTRUCTOR)";
-                TxtMonitoringStatus.Foreground = Brushes.Goldenrod;
-
-                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
-                {
-                    compactStatus.Text = "Monitoring: PAUSED";
-                    compactStatus.Foreground = Brushes.Goldenrod;
-                }
-            }
-            else if (!_sessionEnded && _isMonitoringActive && !_monitoringCountdownEndsAt.HasValue)
-            {
-                TxtMonitoringStatus.Text = "ACTIVE";
-                TxtMonitoringStatus.Foreground = Brushes.LimeGreen;
-
-                if (FindName("TxtCompactMonitoringStatus") is TextBlock compactStatus)
-                {
-                    compactStatus.Text = "Monitoring: ACTIVE";
-                    compactStatus.Foreground = Brushes.LimeGreen;
-                }
-            }
-
             if (_monitoringCountdownEndsAt.HasValue)
             {
                 var countdownLeft = _monitoringCountdownEndsAt.Value - DateTime.Now;
