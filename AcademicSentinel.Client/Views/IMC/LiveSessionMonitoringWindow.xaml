@@ -165,10 +165,6 @@
                     </StackPanel>
                 </StackPanel>
 
-                <Button Grid.Column="2" Content="DEV: Inject Data"
-                Background="#FF9800" Foreground="Black" FontWeight="Bold"
-                Padding="10,5" Margin="0,0,10,0" Cursor="Hand" BorderThickness="0"
-                Click="BtnInjectMockData_Click"/>
                 <Button Grid.Column="3" Content="End Session"
                         Style="{StaticResource EndSessionBtn}"
                         Click="BtnEndSession_Click"
@@ -373,6 +369,11 @@
                                                                    FontWeight="Bold"
                                                                    Foreground="#E65100"
                                                                    Visibility="{Binding IsLeaveRequested, Converter={StaticResource BoolToVis}}"/>
+                                                        <TextBlock Text="REQUESTING TO JOIN"
+                                                                   FontSize="9"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="#FF9800"
+                                                                   Visibility="{Binding IsJoinPending, Converter={StaticResource BoolToVis}}"/>
                                                         <TextBlock Text="{Binding Status}" FontSize="10" Foreground="{Binding StatusColor}"/>
                                                     </StackPanel>
                                                     <Button x:Name="BtnApproveLeave"
@@ -384,6 +385,25 @@
                                                             Margin="6,0,36,0"
                                                             Visibility="{Binding IsLeaveRequested, Converter={StaticResource BoolToVis}}"
                                                             Click="BtnApproveLeave_Click"/>
+                                                    <StackPanel Grid.Column="3"
+                                                                Orientation="Horizontal"
+                                                                Margin="6,0,36,0"
+                                                                Visibility="{Binding IsJoinPending, Converter={StaticResource BoolToVis}}">
+                                                        <Button Content="Approve Join"
+                                                                Style="{StaticResource PrimaryBtn}"
+                                                                FontSize="10"
+                                                                Padding="8,4"
+                                                                Margin="0,0,4,0"
+                                                                Click="BtnApproveJoin_Click"/>
+                                                        <Button Content="Deny"
+                                                                Background="#D32F2F"
+                                                                Foreground="White"
+                                                                FontSize="10"
+                                                                Padding="8,4"
+                                                                BorderThickness="0"
+                                                                Cursor="Hand"
+                                                                Click="BtnDenyJoin_Click"/>
+                                                    </StackPanel>
                                                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
                                                         <materialDesign:PackIcon Kind="AlertCircle"
                                                                                  Width="16"

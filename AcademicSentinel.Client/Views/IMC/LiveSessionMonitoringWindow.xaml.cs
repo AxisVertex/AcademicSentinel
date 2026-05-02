@@ -475,6 +475,8 @@ namespace AcademicSentinel.Client.Views.IMC
                     student.StatusColor = "#4CAF50";
                 }
 
+                // Allow a student who previously left (approved or not) to reappear on rejoin
+                _permanentlyDismissedStudents.Remove(studentId);
                 _safelyLeftStudentIds.Remove(studentId);
                 LogActivity("SYSTEM", "SYSTEM", $"✅ SESSION JOINED / CONNECTION RESTORED. {studentName}", "#4CAF50");
                 _ = LoadParticipantsFromServerAsync();
@@ -532,28 +534,6 @@ namespace AcademicSentinel.Client.Views.IMC
                 _studentsView.Refresh();
             })));
 
-            _hubSubscriptions.Add(_hubConnection.On<int, string, int, DateTime>("ViolationDetected", (studentId, eventType, severityScore, timestamp) => _ = Dispatcher.InvokeAsync(() =>
-            {
-                if (_permanentlyDismissedStudents.Contains(studentId))
-                    return;
-
-                _studentsWithViolations.Add(studentId);
-                AppendStudentMonitoringEvent(studentId, eventType, severityScore);
-
-                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
-                if (targetStudent != null)
-                {
-                    targetStudent.ViolationCount += Math.Max(1, severityScore);
-                    targetStudent.HasViolation = true;
-                    targetStudent.Status = $"ALERT: {eventType}";
-                    targetStudent.StatusColor = "#D32F2F";
-                }
-
-                var email = targetStudent?.Email ?? _allParticipants.FirstOrDefault(p => p.StudentId == studentId)?.StudentEmail ?? $"Student #{studentId}";
-                LogActivity(email, "VIOLATION", eventType, "#D32F2F");
-                UpdateDetailPanelForIncomingViolation(studentId);
-                _studentsView.Refresh();
-            })));
 
             _hubSubscriptions.Add(_hubConnection.On<int>("LeaveRequested", studentId => Dispatcher.Invoke(() =>
             {
@@ -563,14 +543,18 @@ namespace AcademicSentinel.Client.Views.IMC
                 _leaveRequestedStateByStudentId[studentId] = true;
 
                 var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
-                if (targetStudent == null) return;
+                if (targetStudent != null)
+                {
+                    targetStudent.IsLeaveRequested = true;
+                    targetStudent.Status = "Wants to Leave";
+                    targetStudent.StatusColor = "#FF9800";
+                    _studentsView.Refresh();
+                }
 
-                targetStudent.IsLeaveRequested = true;
-                targetStudent.Status = "Wants to Leave";
-                targetStudent.StatusColor = "#FF9800";
-
-                LogActivity(targetStudent.Email, "LEAVE_REQ", "Student requested leave approval.", "#FF9800");
-                _studentsView.Refresh();
+                var email = targetStudent?.Email
+                    ?? _allParticipants.FirstOrDefault(p => p.StudentId == studentId)?.StudentEmail
+                    ?? $"Student #{studentId}";
+                LogActivity(email, "LEAVE_REQ", "Student requested leave approval.", "#FF9800");
             })));
 
             _hubSubscriptions.Add(_hubConnection.On<int>("StudentSafelyLeft", studentId => Dispatcher.Invoke(() =>
@@ -613,6 +597,47 @@ namespace AcademicSentinel.Client.Views.IMC
                     _studentsView.Refresh();
                     UpdateParticipantCount();
                 }
+            })));
+
+            _hubSubscriptions.Add(_hubConnection.On<int, string>("StudentJoinApprovalRequired", (studentId, studentName) => Dispatcher.Invoke(() =>
+            {
+                if (_permanentlyDismissedStudents.Contains(studentId))
+                    return;
+
+                var existing = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (existing == null)
+                {
+                    ActiveStudents.Add(new LiveStudentStatus
+                    {
+                        StudentId = studentId,
+                        Name = studentName,
+                        Email = studentName,
+                        IsJoinPending = true,
+                        Status = "Requesting to Join",
+                        StatusColor = "#FF9800"
+                    });
+                    _studentsView.Refresh();
+                    UpdateParticipantCount();
+                }
+                else
+                {
+                    existing.IsJoinPending = true;
+                    existing.Status = "Requesting to Join";
+                    existing.StatusColor = "#FF9800";
+                    _studentsView.Refresh();
+                }
+
+                LogActivity(studentName, "JOIN_REQ", $"Requesting to join active session: {studentName}", "#FF9800");
+            })));
+
+            _hubSubscriptions.Add(_hubConnection.On<int>("StudentJoinDenied", studentId => Dispatcher.Invoke(() =>
+            {
+                var targetStudent = ActiveStudents.FirstOrDefault(s => s.StudentId == studentId);
+                if (targetStudent == null) return;
+                LogActivity(targetStudent.Email, "JOIN_DENIED", "Join request denied.", "#9E9E9E");
+                ActiveStudents.Remove(targetStudent);
+                _studentsView.Refresh();
+                UpdateParticipantCount();
             })));
 
             _hubSubscriptions.Add(_hubConnection.On<int, bool, bool>("ReceiveHardwareStateUpdate", (studentId, isVm, isRemote) => Dispatcher.Invoke(() =>
@@ -666,6 +691,42 @@ namespace AcademicSentinel.Client.Views.IMC
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to grant leave: {ex.Message}", "Grant Leave", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async void BtnApproveJoin_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.DataContext is not LiveStudentStatus student)
+                return;
+
+            try
+            {
+                await _hubConnection.InvokeAsync("ApproveStudentJoin", _roomId, student.StudentId);
+                student.IsJoinPending = false;
+                LogActivity(student.Name, "JOIN_APPROVED", "Instructor approved student join.", "#1B5E20");
+                _studentsView.Refresh();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to approve join: {ex.Message}", "Approve Join", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async void BtnDenyJoin_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.DataContext is not LiveStudentStatus student)
+                return;
+
+            try
+            {
+                await _hubConnection.InvokeAsync("DenyStudentJoin", _roomId, student.StudentId);
+                ActiveStudents.Remove(student);
+                _studentsView.Refresh();
+                UpdateParticipantCount();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to deny join: {ex.Message}", "Deny Join", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -1168,25 +1229,6 @@ namespace AcademicSentinel.Client.Views.IMC
                 criticalAlertBanner.Visibility = Visibility.Collapsed;
         }
 
-        // ======================== MOCK DATA INJECTOR ========================
-
-        private void BtnInjectMockData_Click(object sender, RoutedEventArgs e)
-        {
-            ActiveStudents.Add(new LiveStudentStatus { Email = "joe@tech.edu", Status = "Connected", StatusColor = "#4CAF50" });
-            ActiveStudents.Add(new LiveStudentStatus { Email = "jane@tech.edu", Status = "ALERT: ALT_TAB", StatusColor = "#D32F2F", ViolationCount = 2 });
-            ActiveStudents.Add(new LiveStudentStatus { Email = "adam@tech.edu", Status = "Connected", StatusColor = "#4CAF50" });
-
-            LogActivity("joe@tech.edu", "JOINED", "Student joined.", "#4CAF50");
-            LogActivity("jane@tech.edu", "VIOLATION", "ALT_TAB detected.", "#D32F2F");
-            LogActivity("adam@tech.edu", "JOINED", "Student joined.", "#4CAF50");
-
-            UpdateParticipantCount();
-
-            // Notice how Jane automatically goes to the top because she has 2 violations!
-            _studentsView.Refresh();
-            ApplyAllFilters();
-        }
-
         public class StartSessionResponse { public int SessionId { get; set; } }
     }
 
@@ -1223,6 +1265,8 @@ namespace AcademicSentinel.Client.Views.IMC
             }
         }
         public bool IsLeaveRequested { get => _isLeaveRequested; set { _isLeaveRequested = value; OnPropertyChanged(); } }
+        private bool _isJoinPending;
+        public bool IsJoinPending { get => _isJoinPending; set { _isJoinPending = value; OnPropertyChanged(); } }
         public bool HasViolation { get => _hasViolation; set { _hasViolation = value; OnPropertyChanged(); } }
         public bool HasHardwareViolation { get => _hasHardwareViolation; set { _hasHardwareViolation = value; OnPropertyChanged(); } }
         public bool IsUsingVM { get => _isUsingVm; set { _isUsingVm = value; OnPropertyChanged(); } }

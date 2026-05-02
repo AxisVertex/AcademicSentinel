@@ -16,6 +16,9 @@ public class MonitoringHub : Hub
     private readonly AppDbContext _context;
     private readonly IServiceScopeFactory _scopeFactory;
     private static readonly ConcurrentDictionary<int, bool> MonitoringStates = new();
+    private static readonly ConcurrentDictionary<int, DateTime> CountdownEndsAt = new();
+    // Key: "{roomId}:{studentId}" → (connectionId, displayName)
+    private static readonly ConcurrentDictionary<string, (string ConnectionId, string DisplayName)> PendingJoins = new();
 
     public MonitoringHub(AppDbContext context, IServiceScopeFactory scopeFactory)
     {
@@ -72,11 +75,13 @@ public class MonitoringHub : Hub
             return;
 
         MonitoringStates[roomId] = false;
+        CountdownEndsAt[roomId] = DateTime.UtcNow.AddSeconds(Math.Max(0, delaySeconds));
         await Clients.Group(roomId.ToString()).SendAsync("MonitoringCountdownStarted", delaySeconds, monitoringDurationSeconds);
 
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(0, delaySeconds)));
+            CountdownEndsAt.TryRemove(roomId, out _);
             MonitoringStates[roomId] = true;
             await Clients.Group(roomId.ToString()).SendAsync("MonitoringStateChanged", true);
         });
@@ -144,8 +149,6 @@ public class MonitoringHub : Hub
                 .OrderByDescending(s => s.StartTime)
                 .FirstOrDefaultAsync();
 
-            await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
-
             var participant = await _context.SessionParticipants
                 .Where(p => p.RoomId == roomId && p.StudentId == studentId && (activeSession == null || p.JoinedAt >= activeSession.StartTime))
                 .OrderByDescending(p => p.JoinedAt)
@@ -155,6 +158,30 @@ public class MonitoringHub : Hub
             {
                 await Clients.Caller.SendAsync("JoinFailed", "You have already completed and exited this active session.");
                 return;
+            }
+
+            string studentDisplayName = string.IsNullOrWhiteSpace(studentUser.FullName) ? studentUser.Email : studentUser.FullName;
+
+            // New students joining an active (not countdown) session must wait for instructor approval
+            bool monitoringActive = MonitoringStates.TryGetValue(roomId, out var isActive) && isActive;
+            bool isNewStudent = participant == null;
+
+            if (isNewStudent && monitoringActive)
+            {
+                var pendingKey = $"{roomId}:{studentId}";
+                PendingJoins[pendingKey] = (Context.ConnectionId, studentDisplayName);
+                await Clients.Caller.SendAsync("JoinPendingApproval");
+                await Clients.Group(roomId.ToString()).SendAsync("StudentJoinApprovalRequired", studentId, studentDisplayName);
+                return;
+            }
+
+            await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
+
+            // Send countdown state to students who joined late
+            if (CountdownEndsAt.TryGetValue(roomId, out var endsAt) && endsAt > DateTime.UtcNow)
+            {
+                var remaining = (int)Math.Ceiling((endsAt - DateTime.UtcNow).TotalSeconds);
+                await Clients.Caller.SendAsync("MonitoringCountdownStarted", remaining, 0);
             }
 
             if (participant == null)
@@ -189,7 +216,6 @@ public class MonitoringHub : Hub
             await _context.SaveChangesAsync();
 
             await Clients.Group(roomId.ToString()).SendAsync("StudentJoined", studentId);
-            string studentDisplayName = string.IsNullOrWhiteSpace(studentUser.FullName) ? studentUser.Email : studentUser.FullName;
             await Clients.Group(roomId.ToString()).SendAsync("StudentJoinedOrReconnected", studentId, studentDisplayName);
         }
         catch (Exception ex)
@@ -451,6 +477,70 @@ public class MonitoringHub : Hub
         await Clients.User(studentId.ToString()).SendAsync("LeaveGranted", studentId);
         await Clients.Group(roomId.ToString()).SendAsync("StudentLeftSession", studentId);
         await Clients.Group(roomId.ToString()).SendAsync("LeaveApprovalUpdated", studentId, true);
+    }
+
+    public async Task ApproveStudentJoin(int roomId, int studentId)
+    {
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+        if (!string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var pendingKey = $"{roomId}:{studentId}";
+        if (!PendingJoins.TryRemove(pendingKey, out var pending))
+            return;
+
+        var studentUser = await _context.Users.FindAsync(studentId);
+        if (studentUser == null)
+        {
+            await Clients.Client(pending.ConnectionId).SendAsync("JoinFailed", "Student record not found.");
+            return;
+        }
+
+        await Groups.AddToGroupAsync(pending.ConnectionId, roomId.ToString());
+
+        var activeSession = await _context.ExamSessions
+            .Where(s => s.RoomId == roomId && s.Status == "Active")
+            .OrderByDescending(s => s.StartTime)
+            .FirstOrDefaultAsync();
+
+        var participant = new SessionParticipant
+        {
+            RoomId = roomId,
+            StudentId = studentId,
+            ConnectionStatus = "Connected",
+            JoinedAt = DateTime.UtcNow
+        };
+        _context.SessionParticipants.Add(participant);
+
+        _context.MonitoringEvents.Add(new MonitoringEvent
+        {
+            RoomId = roomId,
+            StudentId = studentId,
+            EventType = "SYSTEM",
+            Description = $"✅ SESSION JOINED (APPROVED). ({studentUser.Email})",
+            SeverityScore = 0,
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _context.SaveChangesAsync();
+
+        await Clients.Client(pending.ConnectionId).SendAsync("JoinApproved");
+        await Clients.Group(roomId.ToString()).SendAsync("StudentJoined", studentId);
+        await Clients.Group(roomId.ToString()).SendAsync("StudentJoinedOrReconnected", studentId, pending.DisplayName);
+    }
+
+    public async Task DenyStudentJoin(int roomId, int studentId)
+    {
+        var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+        if (!string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var pendingKey = $"{roomId}:{studentId}";
+        if (!PendingJoins.TryRemove(pendingKey, out var pending))
+            return;
+
+        await Clients.Client(pending.ConnectionId).SendAsync("JoinFailed", "Your request to join was denied by the instructor.");
+        await Clients.Group(roomId.ToString()).SendAsync("StudentJoinDenied", studentId);
     }
 
     public async Task NotifyStudentLeftSafely(int roomId, int studentId)

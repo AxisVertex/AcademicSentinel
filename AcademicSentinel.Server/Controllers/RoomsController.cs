@@ -456,7 +456,7 @@ public class RoomsController : ControllerBase
                 Section = section,
                 EnrollmentCode = r.EnrollmentCode,
                 Status = r.Status,
-                CourseImagePath = r.RoomImageUrl,
+                RoomImageUrl = r.RoomImageUrl,
                 RoomDescription = r.SubjectName,
                 CreatedBy = instructors.TryGetValue(r.InstructorId, out var creator) ? creator : "Unknown Instructor"
             };
@@ -478,8 +478,8 @@ public class RoomsController : ControllerBase
         var room = await _context.Rooms.FirstOrDefaultAsync(r => r.EnrollmentCode == request.EnrollmentCode);
         if (room == null) return BadRequest("Invalid course code. Please check with your instructor.");
 
-        if (room.Status != "Pending")
-            return BadRequest("Enrollment is only allowed while the room is in Pending status.");
+        if (room.Status == "Ended")
+            return BadRequest("Enrollment is closed for this room.");
 
         // 2. Check if already enrolled
         var existingEnrollment = await _context.RoomEnrollments

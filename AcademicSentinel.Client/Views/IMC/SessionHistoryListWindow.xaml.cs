@@ -38,7 +38,7 @@ namespace AcademicSentinel.Client.Views.IMC
                 using var client = new HttpClient();
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", SessionManager.JwtToken);
 
-                var response = await client.GetAsync($"{ApiEndpoints.Rooms}/{_roomId}/sessions");
+                var response = await client.GetAsync($"{ApiEndpoints.BaseUrl}/api/reports/rooms/{_roomId}/sessions");
                 if (!response.IsSuccessStatusCode)
                 {
                     MessageBox.Show("Unable to load archived sessions.", "Session History", MessageBoxButton.OK, MessageBoxImage.Warning);

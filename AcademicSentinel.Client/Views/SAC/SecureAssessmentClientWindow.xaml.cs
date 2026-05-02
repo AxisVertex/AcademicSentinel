@@ -327,6 +327,22 @@ namespace AcademicSentinel.Client.Views.SAC
                     compactStatus.Text = statusText;
                     compactStatus.Foreground = color;
                 }
+
+                if (FindName("TxtHeaderMonitoringStatus") is TextBlock headerStatus)
+                {
+                    headerStatus.Text = isActive ? "Monitoring: ACTIVE" : statusText;
+                    headerStatus.Foreground = color;
+                }
+
+                // Update leave permission label: blocked during active monitoring, paused, or countdown
+                if (FindName("TxtCompactLeavePermission") is TextBlock compactLeavePermission)
+                {
+                    bool leaveBlocked = isActive || (_currentPhase != ExamPhase.PreSession && !_sessionEnded);
+                    compactLeavePermission.Text = leaveBlocked ? "Leave Permission: Blocked" : "Leave Permission: Allowed";
+                    compactLeavePermission.Foreground = leaveBlocked
+                        ? new SolidColorBrush(Color.FromRgb(198, 40, 40))
+                        : new SolidColorBrush(Color.FromRgb(46, 125, 50));
+                }
             });
         }
 
@@ -573,6 +589,9 @@ namespace AcademicSentinel.Client.Views.SAC
                         _monitoringCountdownEndsAt = null;
                         _monitoringStartedAt ??= DateTime.Now;
                         _currentPhase = ExamPhase.Active;
+                        // Reset any stale leave request from a previous pause/pending cycle
+                        _leaveRequestState = LeaveRequestState.Locked;
+                        _isLeaveRequested = false;
                     }
                     else
                     {
@@ -813,6 +832,42 @@ namespace AcademicSentinel.Client.Views.SAC
                         _hubConnection = null;
                         UpdateDetectorRuntimeState();
                         UpdateRequestLeaveButtonState();
+                    });
+                });
+
+                _hubConnection.On("JoinPendingApproval", () =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        _currentPhase = ExamPhase.Countdown;
+                        _leaveRequestState = LeaveRequestState.Locked;
+                        SetMonitoringStateUI(false, "Waiting for instructor approval...", System.Windows.Media.Brushes.Goldenrod);
+                        UpdateRequestLeaveButtonState();
+                    });
+                });
+
+                _hubConnection.On("JoinApproved", () =>
+                {
+                    Dispatcher.Invoke(async () =>
+                    {
+                        try
+                        {
+                            bool isMonitoringActive = await _hubConnection.InvokeAsync<bool>("GetMonitoringState", _roomId);
+                            _isMonitoringActive = isMonitoringActive;
+                            _monitoringCountdownEndsAt = null;
+                            _monitoringStartedAt = isMonitoringActive ? DateTime.Now : null;
+                            if (!_sessionEnded)
+                                _currentPhase = isMonitoringActive ? ExamPhase.Active : ExamPhase.PreSession;
+                            _leaveRequestState = LeaveRequestState.Locked;
+                            _isLeaveRequested = false;
+
+                            string text = isMonitoringActive ? "ACTIVE" : "INACTIVE";
+                            var color = isMonitoringActive ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Gray;
+                            SetMonitoringStateUI(isMonitoringActive, text, color);
+                            UpdateDetectorRuntimeState();
+                            UpdateRequestLeaveButtonState();
+                        }
+                        catch { }
                     });
                 });
 

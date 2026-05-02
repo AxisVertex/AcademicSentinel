@@ -166,7 +166,7 @@ public class ReportsController : ControllerBase
     public async Task<ActionResult<IEnumerable<object>>> GetRoomSessions(int roomId)
     {
         var sessions = await _context.ExamSessions
-            .Where(s => s.RoomId == roomId && s.Status == "Completed")
+            .Where(s => s.RoomId == roomId && s.Status != "Pending" && s.Status != "Active")
             .OrderByDescending(s => s.StartTime)
             .ToListAsync();
 
@@ -186,7 +186,8 @@ public class ReportsController : ControllerBase
 
             result.Add(new {
                 SessionId = s.Id, StartTime = s.StartTime, EndTime = s.EndTime,
-                Duration = duration, AttendeeCount = attendees, TotalViolations = violations
+                Duration = duration, AttendeeCount = attendees, TotalViolations = violations,
+                Status = s.Status
             });
         }
         return Ok(result);

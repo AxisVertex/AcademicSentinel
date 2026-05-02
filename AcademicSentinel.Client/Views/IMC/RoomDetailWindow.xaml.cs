@@ -19,6 +19,7 @@ namespace AcademicSentinel.Client.Views.IMC
     {
         public int CurrentRoomId { get; private set; }
         public ObservableCollection<SessionItem> Sessions { get; set; }
+        private List<SessionArchiveDto> _allSessions = new();
 
         public RoomDetailWindow(int roomId, string roomTitle)
         {
@@ -118,7 +119,8 @@ namespace AcademicSentinel.Client.Views.IMC
                 if (response.IsSuccessStatusCode)
                 {
                     var sessions = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<List<AcademicSentinel.Client.Models.SessionArchiveDto>>(response.Content);
-                    PastSessionsGrid.ItemsSource = sessions;
+                    _allSessions = sessions ?? new List<AcademicSentinel.Client.Models.SessionArchiveDto>();
+                    ApplyFilter();
                 }
             }
             catch (Exception ex)
@@ -250,8 +252,35 @@ namespace AcademicSentinel.Client.Views.IMC
                 detailWindow.ShowDialog();
             }
         }
-        private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e) { }
-        private void CmbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
+        private void ApplyFilter()
+        {
+            var searchText = TxtSearch?.Text?.Trim() ?? string.Empty;
+            var filterItem = (CmbFilter?.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "All Sessions";
+
+            var filtered = _allSessions.AsEnumerable();
+
+            if (!string.IsNullOrEmpty(searchText))
+            {
+                filtered = filtered.Where(s =>
+                    s.SessionId.ToString().Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                    s.StartTime.ToString("MM/dd/yyyy").Contains(searchText));
+            }
+
+            if (filterItem != "All Sessions")
+            {
+                filtered = filtered.Where(s =>
+                    string.Equals(s.Status, filterItem, StringComparison.OrdinalIgnoreCase));
+            }
+
+            var result = filtered.ToList();
+            PastSessionsGrid.ItemsSource = result;
+
+            if (TxtPaginationInfo != null)
+                TxtPaginationInfo.Text = $"Showing {result.Count} of {_allSessions.Count} sessions";
+        }
+
+        private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
+        private void CmbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e) => ApplyFilter();
         private void ViewSession_Click(object sender, RoutedEventArgs e) { }
         private void DeleteSession_Click(object sender, RoutedEventArgs e) { }
     }

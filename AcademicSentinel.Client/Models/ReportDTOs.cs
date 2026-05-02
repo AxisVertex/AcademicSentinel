@@ -11,6 +11,7 @@ namespace AcademicSentinel.Client.Models
         public string Duration { get; set; }
         public int AttendeeCount { get; set; }
         public int TotalViolations { get; set; }
+        public string Status { get; set; } = string.Empty;
     }
 
     public class SessionStudentDto
