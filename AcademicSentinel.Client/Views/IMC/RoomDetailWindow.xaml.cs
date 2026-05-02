@@ -12,6 +12,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AcademicSentinel.Client.Models;
+using System.ComponentModel; // ADDITION: 3C
+using System.Windows.Data; // ADDITION: 3C
 
 namespace AcademicSentinel.Client.Views.IMC
 {
@@ -19,6 +21,9 @@ namespace AcademicSentinel.Client.Views.IMC
     {
         public int CurrentRoomId { get; private set; }
         public ObservableCollection<SessionItem> Sessions { get; set; }
+        private ICollectionView _pastSessionsView; // ADDITION: 3C
+        private string _searchQuery = string.Empty; // ADDITION: 3C
+        private string _selectedStatusFilter = "All Sessions"; // ADDITION: 3C
 
         public RoomDetailWindow(int roomId, string roomTitle)
         {
@@ -118,13 +123,37 @@ namespace AcademicSentinel.Client.Views.IMC
                 if (response.IsSuccessStatusCode)
                 {
                     var sessions = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<List<AcademicSentinel.Client.Models.SessionArchiveDto>>(response.Content);
-                    PastSessionsGrid.ItemsSource = sessions;
+                    var source = new ObservableCollection<SessionArchiveDto>(sessions ?? new List<SessionArchiveDto>());
+                    _pastSessionsView = CollectionViewSource.GetDefaultView(source); // No functional change
+                    _pastSessionsView.Filter = PastSessionFilter; // ADDITION: 3C
+                    PastSessionsGrid.ItemsSource = _pastSessionsView; // ADDITION: 3C
+                    _pastSessionsView.Refresh(); // ADDITION: 3C
                 }
             }
             catch (Exception ex)
             {
                 System.Windows.MessageBox.Show($"Unable to load archived sessions: {ex.Message}");
             }
+        }
+
+        private bool PastSessionFilter(object obj)
+        {
+            if (obj is not SessionArchiveDto session)
+                return false; // ADDITION: 3C
+
+            if (!string.Equals(_selectedStatusFilter, "All Sessions", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(session.SessionEndStatus, _selectedStatusFilter, StringComparison.OrdinalIgnoreCase))
+            {
+                return false; // ADDITION: 3C
+            }
+
+            if (string.IsNullOrWhiteSpace(_searchQuery))
+                return true; // ADDITION: 3C
+
+            var query = _searchQuery.Trim();
+            return session.SessionId.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)
+                   || session.StartTime.ToString("MM/dd/yyyy").Contains(query, StringComparison.OrdinalIgnoreCase)
+                   || session.Duration.Contains(query, StringComparison.OrdinalIgnoreCase); // No functional change
         }
 
         private async void FetchRoomStatus()
@@ -250,8 +279,20 @@ namespace AcademicSentinel.Client.Views.IMC
                 detailWindow.ShowDialog();
             }
         }
-        private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e) { }
-        private void CmbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
+        private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _searchQuery = TxtSearch.Text ?? string.Empty; // ADDITION: 3C
+            _pastSessionsView?.Refresh(); // ADDITION: 3C
+        }
+
+        private void CmbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (CmbFilter.SelectedItem is ComboBoxItem item)
+            {
+                _selectedStatusFilter = item.Content?.ToString() ?? "All Sessions"; // ADDITION: 3C
+                _pastSessionsView?.Refresh(); // ADDITION: 3C
+            }
+        }
         private void ViewSession_Click(object sender, RoutedEventArgs e) { }
         private void DeleteSession_Click(object sender, RoutedEventArgs e) { }
     }

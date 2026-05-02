@@ -7,6 +7,7 @@ using AcademicSentinel.Server.DTOs;
 using System.Security.Claims;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
+using System.Threading; // FIX: BUG 1C
 
 namespace AcademicSentinel.Server.Hubs;
 
@@ -16,6 +17,8 @@ public class MonitoringHub : Hub
     private readonly AppDbContext _context;
     private readonly IServiceScopeFactory _scopeFactory;
     private static readonly ConcurrentDictionary<int, bool> MonitoringStates = new();
+    private static readonly ConcurrentDictionary<int, bool> MonitoringPausedStates = new(); // FIX: BUG 1A
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> JoinLocks = new(); // FIX: BUG 1C
 
     public MonitoringHub(AppDbContext context, IServiceScopeFactory scopeFactory)
     {
@@ -39,6 +42,7 @@ public class MonitoringHub : Hub
             return;
 
         MonitoringStates[roomId] = isActive;
+        MonitoringPausedStates[roomId] = false; // FIX: BUG 1A
         await Clients.Group(roomId.ToString()).SendAsync("MonitoringStateChanged", isActive);
     }
 
@@ -53,6 +57,7 @@ public class MonitoringHub : Hub
         if (!string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
             return;
 
+        MonitoringPausedStates[roomId] = true; // FIX: BUG 1A
         await Clients.Group(roomId.ToString()).SendAsync("MonitoringPaused");
     }
 
@@ -62,6 +67,7 @@ public class MonitoringHub : Hub
         if (!string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
             return;
 
+        MonitoringPausedStates[roomId] = false; // FIX: BUG 1A
         await Clients.Group(roomId.ToString()).SendAsync("MonitoringResumed");
     }
 
@@ -114,6 +120,11 @@ public class MonitoringHub : Hub
     // SAC calls this when the student enters the active exam room
     public async Task JoinLiveExam(int roomId)
     {
+        var joinLock = JoinLocks.GetOrAdd(roomId, _ => new SemaphoreSlim(1, 1)); // FIX: BUG 1C
+        await joinLock.WaitAsync(); // FIX: BUG 1C
+
+        try
+        {
         try
         {
             var userIdString = Context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -143,6 +154,12 @@ public class MonitoringHub : Hub
                 .Where(s => s.RoomId == roomId && s.Status == "Active")
                 .OrderByDescending(s => s.StartTime)
                 .FirstOrDefaultAsync();
+
+            if (activeSession == null)
+            {
+                await Clients.Caller.SendAsync("SessionNotReady", "Session is starting. Please wait."); // FIX: BUG 1C
+                return;
+            }
 
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
 
@@ -196,6 +213,11 @@ public class MonitoringHub : Hub
         {
             Console.WriteLine($"JoinLiveExam FAILED for Room {roomId} / Student {Context.User?.Identity?.Name}: {ex.ToString()}");
             await Clients.Caller.SendAsync("JoinFailed", "An unexpected internal server error occurred while finalizing your join.");
+        }
+        }
+        finally
+        {
+            joinLock.Release(); // FIX: BUG 1C
         }
     }
 
@@ -397,6 +419,17 @@ public class MonitoringHub : Hub
 
         int authenticatedStudentId = int.Parse(userIdString);
         if (authenticatedStudentId != studentId) return;
+
+        var room = await _context.Rooms.FindAsync(roomId);
+        if (room == null)
+            return; // FIX: BUG 1A
+
+        var isMonitoringActive = MonitoringStates.TryGetValue(roomId, out var isActive) && isActive; // FIX: BUG 1A
+        var isMonitoringPaused = MonitoringPausedStates.TryGetValue(roomId, out var isPaused) && isPaused; // FIX: BUG 1A
+        var canRequestLeave = (string.Equals(room.Status, "Active", StringComparison.OrdinalIgnoreCase) && isMonitoringActive) // FIX: BUG 1A
+                              || isMonitoringPaused; // FIX: BUG 1A
+        if (!canRequestLeave)
+            return; // FIX: BUG 1A
 
         var isParticipantInRoom = await _context.SessionParticipants
             .AnyAsync(p => p.RoomId == roomId && p.StudentId == studentId);

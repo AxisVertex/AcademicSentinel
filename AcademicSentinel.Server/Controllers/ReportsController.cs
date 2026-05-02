@@ -180,13 +180,24 @@ public class ReportsController : ControllerBase
                 .Distinct()
                 .CountAsync();
 
+            var totalRegistered = await _context.RoomEnrollments
+                .Where(e => e.RoomId == roomId)
+                .Select(e => e.StudentId)
+                .Distinct()
+                .CountAsync(); // ADDITION: 4B
+
+            var endStatus = string.Equals(s.Status, "Completed", StringComparison.OrdinalIgnoreCase)
+                ? "Completed"
+                : "Interrupted"; // ADDITION: 4A
+
             var violations = await _context.MonitoringEvents
                 .Where(e => e.RoomId == roomId && e.Timestamp >= s.StartTime && (s.EndTime == null || e.Timestamp <= s.EndTime) && e.SeverityScore > 0)
                 .CountAsync();
 
             result.Add(new {
                 SessionId = s.Id, StartTime = s.StartTime, EndTime = s.EndTime,
-                Duration = duration, AttendeeCount = attendees, TotalViolations = violations
+                Duration = duration, AttendeeCount = attendees, TotalViolations = violations,
+                SessionEndStatus = endStatus, TotalRegisteredStudents = totalRegistered // ADDITION: 4A, ADDITION: 4B
             });
         }
         return Ok(result);

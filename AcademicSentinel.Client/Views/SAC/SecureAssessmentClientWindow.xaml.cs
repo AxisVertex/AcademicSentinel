@@ -63,6 +63,9 @@ namespace AcademicSentinel.Client.Views.SAC
         private System.Threading.CancellationTokenSource _stateCts;
         private readonly Queue<MonitoringEventDto> _pendingViolationQueue = new Queue<MonitoringEventDto>();
         private readonly Dictionary<string, DateTime> _lastViolationSentByType = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        private bool _isMonitoringPaused; // FIX: BUG 1A
+        private bool _isJoinRetryScheduled; // FIX: BUG 1C
+        private readonly TimeSpan _joinRetryDelay = TimeSpan.FromMilliseconds(1500); // FIX: BUG 1C
 
         private static readonly HashSet<string> ProcessBlacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -264,7 +267,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     fullCountdown.Text = "Countdown: Running";
                 if (compactStatus != null) { compactStatus.Text = "Monitoring: ACTIVE"; compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40)); }
                 if (headerStatus != null) { headerStatus.Text = "Monitoring: ACTIVE"; headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40)); }
-                if (compactLeavePermission != null) { compactLeavePermission.Text = "Leave Permission: Blocked"; compactLeavePermission.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40)); }
+                if (compactLeavePermission != null) { compactLeavePermission.Text = "Leave Permission: Blocked"; compactLeavePermission.Foreground = new SolidColorBrush(Color.FromRgb(198, 40, 40)); } // FIX: BUG 1B
 
                 _monitoringStartedAt ??= DateTime.Now;
                 _monitoringCountdownEndsAt = null;
@@ -279,7 +282,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97));
                     if (compactStatus != null) { compactStatus.Text = "Monitoring: Inactive"; compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97)); }
                     if (headerStatus != null) { headerStatus.Text = "SESSION ENDED"; headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97)); }
-                    if (compactLeavePermission != null) { compactLeavePermission.Text = "Leave Permission: Allowed"; compactLeavePermission.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97)); }
+                    if (compactLeavePermission != null) { compactLeavePermission.Text = "Leave Permission: Allowed"; compactLeavePermission.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97)); } // FIX: BUG 1B
                 }
                 else
                 {
@@ -289,7 +292,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50));
                     if (compactStatus != null) { compactStatus.Text = "Monitoring: Waiting"; compactStatus.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50)); }
                     if (headerStatus != null) { headerStatus.Text = "Monitoring: Waiting"; headerStatus.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50)); }
-                    if (compactLeavePermission != null) { compactLeavePermission.Text = "Leave Permission: Allowed"; compactLeavePermission.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50)); }
+                    if (compactLeavePermission != null) { compactLeavePermission.Text = "Leave Permission: Allowed"; compactLeavePermission.Foreground = new SolidColorBrush(Color.FromRgb(46, 125, 50)); } // FIX: BUG 1B
                 }
 
                 if (FindName("TxtFullCountdown") is System.Windows.Controls.TextBlock fullCountdown)
@@ -302,6 +305,7 @@ namespace AcademicSentinel.Client.Views.SAC
             UpdateHeaderSessionClock();
             UpdateDetectorRuntimeState();
             UpdateRequestLeaveButtonState();
+            UpdateLeavePermissionLabel(); // FIX: BUG 1B
         }
 
         private void SetMonitoringStateUI(bool isActive, string statusText, System.Windows.Media.Brush color)
@@ -327,7 +331,66 @@ namespace AcademicSentinel.Client.Views.SAC
                     compactStatus.Text = statusText;
                     compactStatus.Foreground = color;
                 }
+                UpdateLeavePermissionLabel(); // FIX: BUG 1B
             });
+        }
+
+        private void UpdateLeavePermissionLabel()
+        {
+            if (FindName("TxtCompactLeavePermission") is not TextBlock leavePerm)
+                return;
+
+            string text;
+            Brush color;
+
+            if (_currentPhase == ExamPhase.Active)
+            {
+                if (_leaveRequestState == LeaveRequestState.Unlocked)
+                {
+                    text = "Leave Permission: Allowed"; // FIX: BUG 1B
+                    color = new SolidColorBrush(Color.FromRgb(27, 94, 32));
+                }
+                else
+                {
+                    text = "Leave Permission: Not Allowed"; // FIX: BUG 1B
+                    color = new SolidColorBrush(Color.FromRgb(198, 40, 40));
+                }
+            }
+            else if (_isMonitoringPaused)
+            {
+                text = _leaveRequestState == LeaveRequestState.Unlocked
+                    ? "Leave Permission: Allowed" // FIX: BUG 1B
+                    : "Leave Permission: Not Allowed"; // FIX: BUG 1B
+                color = _leaveRequestState == LeaveRequestState.Unlocked
+                    ? new SolidColorBrush(Color.FromRgb(27, 94, 32))
+                    : new SolidColorBrush(Color.FromRgb(198, 40, 40));
+            }
+            else
+            {
+                text = "Leave Permission: N/A"; // FIX: BUG 1B
+                color = new SolidColorBrush(Color.FromRgb(97, 97, 97));
+            }
+
+            leavePerm.Text = text;
+            leavePerm.Foreground = color;
+        }
+
+        private async Task TryJoinLiveExamAsync()
+        {
+            try
+            {
+                if (_hubConnection == null || _hubConnection.State != HubConnectionState.Connected)
+                    return;
+
+                await _hubConnection.InvokeAsync("JoinLiveExam", _roomId); // FIX: BUG 1C
+                var studentId = SessionManager.CurrentUser?.Id ?? 0;
+                if (studentId > 0)
+                    await _hubConnection.InvokeAsync("ReSyncState", _roomId, studentId); // FIX: BUG 1C
+                await Dispatcher.InvokeAsync(async () => await FlushPendingViolationsAsync()); // FIX: BUG 1C
+            }
+            catch
+            {
+            }
         }
 
         private async Task RefreshMonitoringStateAsync()
@@ -516,20 +579,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     .WithAutomaticReconnect()
                     .Build();
 
-                _hubConnection.Reconnected += async _ =>
-                {
-                    try
-                    {
-                        await _hubConnection.InvokeAsync("JoinLiveExam", _roomId);
-                        var reconnectedStudentId = SessionManager.CurrentUser?.Id ?? 0;
-                        if (reconnectedStudentId > 0)
-                            await _hubConnection.InvokeAsync("ReSyncState", _roomId, reconnectedStudentId);
-                        await Dispatcher.InvokeAsync(async () => await FlushPendingViolationsAsync());
-                    }
-                    catch
-                    {
-                    }
-                };
+                _hubConnection.Reconnected += async _ => await TryJoinLiveExamAsync(); // FIX: BUG 1C
 
                 _hubConnection.On("SessionStarted", () =>
                 {
@@ -553,16 +603,29 @@ namespace AcademicSentinel.Client.Views.SAC
                     try
                     {
                         await _hubConnection.StartAsync();
-                        await _hubConnection.InvokeAsync("JoinLiveExam", _roomId);
-                        var recoveredStudentId = SessionManager.CurrentUser?.Id ?? 0;
-                        if (recoveredStudentId > 0)
-                            await _hubConnection.InvokeAsync("ReSyncState", _roomId, recoveredStudentId);
-                        await Dispatcher.InvokeAsync(async () => await FlushPendingViolationsAsync());
+                        await TryJoinLiveExamAsync(); // FIX: BUG 1C
                     }
                     catch
                     {
                     }
                 };
+
+                _hubConnection.On<string>("SessionNotReady", async _ =>
+                {
+                    if (_isJoinRetryScheduled)
+                        return;
+
+                    _isJoinRetryScheduled = true; // FIX: BUG 1C
+                    Dispatcher.Invoke(() =>
+                    {
+                        TxtMonitoringStatus.Text = "Session starting, please wait..."; // FIX: BUG 1C
+                        TxtMonitoringStatus.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97)); // FIX: BUG 1C
+                    });
+
+                    await Task.Delay(_joinRetryDelay);
+                    _isJoinRetryScheduled = false; // FIX: BUG 1C
+                    await TryJoinLiveExamAsync(); // FIX: BUG 1C
+                });
 
                 _hubConnection.On<bool>("MonitoringStateChanged", (isActive) =>
                 {
@@ -570,6 +633,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     if (isActive)
                     {
                         _isMonitoringActive = true;
+                        _isMonitoringPaused = false; // FIX: BUG 1A
                         _monitoringCountdownEndsAt = null;
                         _monitoringStartedAt ??= DateTime.Now;
                         _currentPhase = ExamPhase.Active;
@@ -577,6 +641,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     else
                     {
                         _isMonitoringActive = false;
+                        _isMonitoringPaused = false; // FIX: BUG 1A
                         _monitoringCountdownEndsAt = null;
                         _monitoringStartedAt = null;
                         if (!_sessionEnded)
@@ -596,6 +661,7 @@ namespace AcademicSentinel.Client.Views.SAC
                 {
                     _stateCts?.Cancel();
                     _isMonitoringActive = false;
+                    _isMonitoringPaused = true; // FIX: BUG 1A
                     _monitoringCountdownEndsAt = null;
                     _monitoringStartedAt = null;
                     if (!_sessionEnded)
@@ -615,6 +681,7 @@ namespace AcademicSentinel.Client.Views.SAC
                     var token = _stateCts.Token;
 
                     _isMonitoringActive = false;
+                    _isMonitoringPaused = false; // FIX: BUG 1A
                     _monitoringCountdownEndsAt = DateTime.Now.AddSeconds(10);
                     _currentPhase = ExamPhase.Countdown;
                     _leaveRequestState = LeaveRequestState.Locked;

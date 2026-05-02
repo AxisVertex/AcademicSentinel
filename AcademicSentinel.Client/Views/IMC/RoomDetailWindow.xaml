@@ -240,11 +240,15 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="TxtRoomTitle"
-                               Text="2TSYS2526 - MATH - TN310-2"
-                               FontSize="22" FontWeight="Bold"
-                               Foreground="{StaticResource FEUGreenBrush}"
-                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="0" x:Name="TxtRoomTitle"
+                             Text="2TSYS2526 - MATH - TN310-2"
+                             FontSize="22" FontWeight="Bold"
+                             Foreground="{StaticResource FEUGreenBrush}"
+                             VerticalAlignment="Center"
+                             IsReadOnly="True"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Cursor="IBeam"/>
                     <Button Grid.Column="1" Content="← Back"
                             Style="{StaticResource OutlineBtn}"
                             Click="BtnBack_Click"/>
@@ -374,12 +378,20 @@
                                 <DataGridTextColumn Header="Session ID" Binding="{Binding SessionId}" Width="100" />
                                 <DataGridTextColumn Header="Date" Binding="{Binding StartTime, StringFormat={}{0:MM/dd/yyyy}}" Width="120" />
                                 <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="100" />
-                                <DataGridTextColumn Header="Attendees" Binding="{Binding AttendeeCount}" Width="100" />
+                                <DataGridTextColumn Header="Attendees" Binding="{Binding AttendeesDisplay}" Width="100" /> <!-- Number of attendees in the session -->
+                                <DataGridTextColumn Header="Status" Binding="{Binding SessionEndStatus}" Width="100" />
                                 <DataGridTextColumn Header="Violations" Binding="{Binding TotalViolations}" Width="100" />
                                 <DataGridTemplateColumn Header="Action" Width="120">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Button Content="View Archive" Click="BtnViewArchive_Click" Style="{StaticResource MaterialDesignFlatButton}" Height="30" />
+                                            <Button Content="View Archive"
+                                                    Click="BtnViewArchive_Click"
+                                                    Style="{StaticResource MaterialDesignFlatButton}"
+                                                    Height="30"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Margin="4,2"
+                                                    Padding="8,4" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
