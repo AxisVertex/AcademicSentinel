@@ -48,3 +48,25 @@ public class ResetPasswordRequestDto
     public string NewPassword { get; set; } = string.Empty;
     public string ResetToken { get; set; } = string.Empty;
 }
+
+public class UpdateProfileDto
+{
+    public string FullName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+}
+
+public class ChangePasswordDto
+{
+    public string CurrentPassword { get; set; } = string.Empty;
+    public string NewPassword { get; set; } = string.Empty;
+}
+
+public class ProfileResponseDto
+{
+    public int Id { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public string? ProfileImageUrl { get; set; }
+}

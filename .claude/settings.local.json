@@ -10,7 +10,8 @@
       "Bash(dotnet tool *)",
       "Bash(export PATH=\"$PATH:$HOME/.dotnet/tools\")",
       "Bash(tasklist //FI \"PID eq 15588\")",
-      "Bash(dotnet user-secrets *)"
+      "Bash(dotnet user-secrets *)",
+      "Bash(xargs grep *)"
     ]
   }
 }

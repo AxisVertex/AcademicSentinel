@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media.Imaging;
 using AcademicSentinel.Client.Constants;
 using AcademicSentinel.Client.Services;
@@ -16,6 +18,7 @@ namespace AcademicSentinel.Client.Views.IMC
     {
         public int CurrentRoomId { get; private set; }
         public ObservableCollection<SessionItem> Sessions { get; set; }
+        private ICollectionView _sessionsView;
 
         public RoomDetailWindow(int roomId, string roomTitle)
         {
@@ -25,7 +28,9 @@ namespace AcademicSentinel.Client.Views.IMC
             TxtRoomTitle.Text = roomTitle;
 
             Sessions = new ObservableCollection<SessionItem>();
-            SessionsList.ItemsSource = Sessions;
+            _sessionsView = CollectionViewSource.GetDefaultView(Sessions);
+            _sessionsView.Filter = SessionMatchesFilters;
+            SessionsList.ItemsSource = _sessionsView;
 
             // Load Sidebar Branding
             LoadTeacherSidebarInfo();
@@ -275,8 +280,39 @@ namespace AcademicSentinel.Client.Views.IMC
                 MessageBox.Show($"Failed to reset room: {ex.Message}", "Force End", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-        private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e) { }
-        private void CmbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
+        private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _sessionsView?.Refresh();
+        }
+
+        private void CmbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            _sessionsView?.Refresh();
+        }
+
+        private bool SessionMatchesFilters(object obj)
+        {
+            if (obj is not SessionItem item) return false;
+
+            // Status filter from ComboBox
+            string selectedStatus = (CmbFilter?.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "All Sessions";
+            if (!string.Equals(selectedStatus, "All Sessions", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(item.Status, selectedStatus, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(item.StatusText, selectedStatus, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            // Search filter (matches session id or date/duration text)
+            string searchTerm = TxtSearch?.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(searchTerm)) return true;
+
+            return (item.SessionId?.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) >= 0)
+                || (item.DateDuration?.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) >= 0)
+                || (item.ExamType?.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
         private void ViewSession_Click(object sender, RoutedEventArgs e) { }
         private void DeleteSession_Click(object sender, RoutedEventArgs e) { }
     }

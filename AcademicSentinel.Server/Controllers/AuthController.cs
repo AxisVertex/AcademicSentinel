@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AcademicSentinel.Server.Data;
 using AcademicSentinel.Server.Models;
@@ -233,6 +234,116 @@ public class AuthController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Password reset successful." });
+    }
+
+    // ----------------------------------------------------------------
+    // PROFILE ENDPOINTS (require authenticated user)
+    // ----------------------------------------------------------------
+
+    [Authorize]
+    [HttpGet("profile")]
+    public async Task<IActionResult> GetProfile()
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId.Value);
+        if (user == null) return NotFound("User not found.");
+
+        return Ok(new ProfileResponseDto
+        {
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
+            Role = user.Role,
+            CreatedAt = user.CreatedAt,
+            ProfileImageUrl = user.ProfileImageUrl
+        });
+    }
+
+    [Authorize]
+    [HttpPut("profile")]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(dto.FullName))
+            return BadRequest("Full name is required.");
+
+        var normalizedEmail = NormalizeEmail(dto.Email);
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+            return BadRequest("Please enter a valid email address.");
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId.Value);
+        if (user == null) return NotFound("User not found.");
+
+        // If email is changing, ensure it isn't taken by someone else.
+        if (!string.Equals(user.Email, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            bool taken = await _context.Users.AnyAsync(u => u.Email == normalizedEmail && u.Id != user.Id);
+            if (taken) return BadRequest("That email address is already in use.");
+        }
+
+        user.FullName = dto.FullName.Trim();
+        user.Email = normalizedEmail;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("User {UserId} updated profile.", user.Id);
+
+        return Ok(new ProfileResponseDto
+        {
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
+            Role = user.Role,
+            CreatedAt = user.CreatedAt,
+            ProfileImageUrl = user.ProfileImageUrl
+        });
+    }
+
+    [Authorize]
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(dto.CurrentPassword) || string.IsNullOrWhiteSpace(dto.NewPassword))
+            return BadRequest("Current and new passwords are required.");
+
+        if (dto.NewPassword.Length < 6)
+            return BadRequest("New password must be at least 6 characters long.");
+
+        if (string.Equals(dto.CurrentPassword, dto.NewPassword, StringComparison.Ordinal))
+            return BadRequest("New password must be different from the current password.");
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId.Value);
+        if (user == null) return NotFound("User not found.");
+
+        if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+            return Unauthorized("Current password is incorrect.");
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+
+        // Invalidate any pending reset tokens to prevent stale-token reuse.
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiresAt = null;
+        user.PasswordResetCodeHash = null;
+        user.PasswordResetCodeExpiresAt = null;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("User {UserId} changed their password.", user.Id);
+
+        return Ok(new { message = "Password changed successfully." });
+    }
+
+    private int? GetCurrentUserId()
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return int.TryParse(idClaim, out var id) ? id : null;
     }
 
     private static string GenerateSixDigitCode()
